@@ -1,0 +1,53 @@
+openapi: 3.1.0
+info:
+  title: Loan Decision API
+  description: API that evaluates SME loan applications based on risk profiles.
+  version: 1.0.0
+servers:
+  - url: https://your-api.onrender.com  # Replace with your actual Render API URL
+paths:
+  /evaluate:
+    post:
+      operationId: evaluateLoan
+      summary: Evaluate a loan application based on risk.
+      description: This endpoint analyzes the SME profile, risk tier, and financial data to determine loan eligibility.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                smeProfile:
+                  type: string
+                  enum: [EB, ESB, NTB, SU]
+                  description: SME Profile ID (Established, Early-Stage, Newly Trading, Startup).
+                riskProfile:
+                  type: string
+                  enum: [T1, T2, T3]
+                  description: Credit risk tier (T1 = Low, T2 = Medium, T3 = High).
+                stressedDSCR:
+                  type: number
+                  description: Debt service coverage ratio under stress scenarios.
+                loanAmount:
+                  type: number
+                  description: Requested loan amount in GBP.
+                loanType:
+                  type: string
+                  enum: [secured, unsecured]
+                  description: Type of loan requested.
+      responses:
+        "200":
+          description: Loan decision response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: string
+                    enum: [PASS, FLAG/AI, FLAG/UW, FAIL]
+                    description: Decision outcome.
+                  explanation:
+                    type: string
+                    description: Detailed reasoning for the decision.
