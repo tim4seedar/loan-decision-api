@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from typing import Literal
+import json
 
 app = FastAPI()
 
@@ -34,8 +35,17 @@ def evaluate_loan(application: LoanApplication):
     
     return {"decision": "FLAG/AI", "explanation": "Requires additional AI analysis for borderline cases."}
 
-# API endpoint
+# API endpoint with logging
 @app.post("/evaluate")
-async def evaluate(application: LoanApplication):
+async def evaluate(application: LoanApplication, request: Request):
+    # Log incoming request from OpenAI
+    body = await request.json()
+    print("🔍 Received Request from OpenAI:", json.dumps(body, indent=2))
+
+    # Evaluate loan
     result = evaluate_loan(application)
+
+    # Log API response before returning it
+    print("✅ Sending Response to OpenAI:", json.dumps(result, indent=2))
+
     return result
