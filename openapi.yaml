@@ -1,16 +1,111 @@
 openapi: 3.1.0
 info:
-  title: Loan Decision API
-  description: API that evaluates SME loan applications based on risk profiles.
-  version: 1.0.0
+  title: Loan Evaluation API
+  description: API for evaluating loan eligibility based on risk profiles, borrower checks, and SME risk rules (Rules 1-70).
+  version: "1.0.0"
 servers:
-  - url: https://loan-decision-api.onrender.com  # Replace with your actual Render API URL
+  - url: https://loan-decision-api.onrender.com
 paths:
+  /evaluate/borrower-type:
+    post:
+      operationId: evaluateBorrowerType
+      summary: Evaluate borrower type.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                borrower_type:
+                  type: string
+                  description: Borrower type (e.g., LTD, Sole Trader, LLP).
+              required:
+                - borrower_type
+      responses:
+        "200":
+          description: Borrower type evaluation response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: string
+                    enum: [PASS, FAIL]
+                  explanation:
+                    type: string
+                  confidence:
+                    type: number
+  /evaluate/borrower-id:
+    post:
+      operationId: evaluateBorrowerID
+      summary: Evaluate borrower ID verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_verified:
+                  type: boolean
+                  description: True if the borrower's ID is verified.
+              required:
+                - is_verified
+      responses:
+        "200":
+          description: Borrower ID verification response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: string
+                    enum: [PASS, FAIL]
+                  explanation:
+                    type: string
+                  confidence:
+                    type: number
+  /evaluate/open-banking:
+    post:
+      operationId: evaluateOpenBanking
+      summary: Evaluate open banking connectivity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_connected:
+                  type: boolean
+                  description: True if open banking is connected.
+              required:
+                - is_connected
+      responses:
+        "200":
+          description: Open banking evaluation response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  decision:
+                    type: string
+                    enum: [PASS, FAIL]
+                  explanation:
+                    type: string
+                  confidence:
+                    type: number
   /evaluate/sme-risk:
     post:
       operationId: evaluateSMERisk
-      summary: Evaluate a loan application based on SME risk.
-      description: This endpoint analyzes the SME profile, risk tier, and financial data to determine loan eligibility.
+      summary: Evaluate SME risk and loan eligibility.
+      description: >
+        This endpoint analyzes the SME profile, risk tier, stressed DSCR, loan amount, and loan type
+        to determine loan eligibility based on a comprehensive ruleset (Rules 1-70).
       requestBody:
         required: true
         content:
@@ -21,19 +116,30 @@ paths:
                 smeProfile:
                   type: string
                   enum: [EB, ESB, NTB, SU]
+                  description: SME profile.
                 riskProfile:
                   type: string
                   enum: [T1, T2, T3]
+                  description: Risk profile.
                 stressedDSCR:
                   type: number
+                  description: Stressed DSCR value.
                 loanAmount:
                   type: number
+                  description: Requested loan amount.
                 loanType:
                   type: string
                   enum: [secured, unsecured]
+                  description: Type of loan.
+              required:
+                - smeProfile
+                - riskProfile
+                - stressedDSCR
+                - loanAmount
+                - loanType
       responses:
         "200":
-          description: Loan decision response.
+          description: SME risk evaluation response.
           content:
             application/json:
               schema:
@@ -41,6 +147,11 @@ paths:
                 properties:
                   decision:
                     type: string
-                    enum: [PASS, FLAG/AI, FLAG/UW, FAIL]
+                    enum: [PASS, FLAG/AI, FLAG/UW, FAIL, REQUIREMENT]
+                    description: Loan decision.
                   explanation:
                     type: string
+                    description: Explanation for the decision.
+                  confidence:
+                    type: number
+                    description: Confidence level of the decision.
