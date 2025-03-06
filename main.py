@@ -433,12 +433,14 @@ class BorrowerIDVerificationRequest(BaseModel):
 class OpenBankingRequest(BaseModel):
     is_connected: bool
 
+from pydantic import BaseModel, Field
+
 class SMERiskRequest(BaseModel):
-    sme_profile: Literal["EB", "ESB", "NTB", "SU"]
-    risk_profile: Literal["T1", "T2", "T3"]
-    dscr: float
-    loan_amount: float
-    loan_type: Literal["secured", "unsecured"]
+    sme_profile: str = Field(alias="smeProfile")
+    risk_profile: str = Field(alias="riskProfile")
+    dscr: float = Field(alias="stressedDSCR")
+    loan_amount: float = Field(alias="loanAmount")
+    loan_type: str = Field(alias="loanType")
 
 # ---------------------- API ENDPOINTS ----------------------
 @app.post("/evaluate/borrower-type")
