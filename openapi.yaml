@@ -6,10 +6,10 @@ info:
 servers:
   - url: https://loan-decision-api.onrender.com  # Replace with your actual Render API URL
 paths:
-  /evaluate:
+  /evaluate/sme-risk:
     post:
-      operationId: evaluateLoan
-      summary: Evaluate a loan application based on risk.
+      operationId: evaluateSMERisk
+      summary: Evaluate a loan application based on SME risk.
       description: This endpoint analyzes the SME profile, risk tier, and financial data to determine loan eligibility.
       requestBody:
         required: true
@@ -21,21 +21,16 @@ paths:
                 smeProfile:
                   type: string
                   enum: [EB, ESB, NTB, SU]
-                  description: SME Profile ID (Established, Early-Stage, Newly Trading, Startup).
                 riskProfile:
                   type: string
                   enum: [T1, T2, T3]
-                  description: Credit risk tier (T1 = Low, T2 = Medium, T3 = High).
                 stressedDSCR:
                   type: number
-                  description: Debt service coverage ratio under stress scenarios.
                 loanAmount:
                   type: number
-                  description: Requested loan amount in GBP.
                 loanType:
                   type: string
                   enum: [secured, unsecured]
-                  description: Type of loan requested.
       responses:
         "200":
           description: Loan decision response.
@@ -47,7 +42,5 @@ paths:
                   decision:
                     type: string
                     enum: [PASS, FLAG/AI, FLAG/UW, FAIL]
-                    description: Decision outcome.
                   explanation:
                     type: string
-                    description: Detailed reasoning for the decision.
