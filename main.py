@@ -415,6 +415,51 @@ def evaluate_sme_risk(sme_profile: str, risk_profile: str, dscr: float,
     else:
         return {"decision": "FAIL", "confidence": 0.99,
                 "explanation": "Invalid SME profile."}
+# ---------------------- UNDERWRITER SCHEMA ----------------------
+
+UNDERWRITER_SCHEMA = {
+    "version": "2.0",
+    "instructions": {
+        "role": "Underwriter GPT",
+        "objective": (
+            "Generate a detailed explanation for an auto-approved loan application. "
+            "Explain in detail the business logic and rules applied to the input scenario data. "
+            "Your explanation should be comprehensive, transparent, and structured so that it is both human-readable and machine-loggable."
+        ),
+        "prompt_guidelines": [
+            "Begin with a 'Decisioning Summary' that outlines the final decision and the confidence rating provided by the system.",
+            "Include a 'Business Logic Explanation' section where you detail the key rules and calculations that led to the decision, including references to specific rule IDs.",
+            "Provide an 'Input Scenario Analysis' section summarizing the input data (e.g., SME profile, risk profile, DSCR, loan amount, loan type).",
+            "List any deterministic rules that were triggered during the evaluation and explain their impact on the decision.",
+            "Conclude with 'Risk Mitigation Recommendations' if applicable or note if the scenario is borderline and may require further manual review.",
+            "Ensure your output is clearly structured with headings for each section and formatted in JSON or YAML."
+        ],
+        "output_structure": {
+            "decisioning_summary": "Overview of the final decision and the associated confidence rating.",
+            "business_logic_explanation": "Detailed explanation of the business logic and rules applied, including references to specific rule IDs.",
+            "input_scenario_analysis": "Summary of the input scenario data provided.",
+            "applied_rules": "A list of triggered rules with their IDs and detailed explanations of their impact on the decision.",
+            "risk_recommendations": "Recommendations for mitigating risks or notes on borderline cases that may require manual review."
+        }
+    },
+    "data_sources": {
+        "decisioning_gpt": (
+            "This is a self-referential process. The same GPT that generates the decision provides the detailed explanation "
+            "of the applied business logic based on the input scenario data."
+        )
+    },
+    "fallback": (
+        "If any required data from the input scenario is missing or ambiguous, default to flagging the application for manual review. "
+        "Include a clear note in your explanation specifying which parts of the input data were incomplete or unclear."
+    )
+}
+
+def get_underwriter_schema():
+    """
+    Return the comprehensive underwriter schema containing instructions,
+    output structure, data source references, and fallback guidelines.
+    """
+    return UNDERWRITER_SCHEMA
 
 # ---------------------- FASTAPI APP SETUP ----------------------
 app = FastAPI(
@@ -464,6 +509,9 @@ async def evaluate_sme_risk_endpoint(request: SMERiskRequest):
         loan_amount=request.loan_amount,
         loan_type=request.loan_type
     )
+@app.get("/underwriter-schema")
+async def underwriter_schema_endpoint():
+    return get_underwriter_schema()
 
 # ---------------------- RUN THE APP ----------------------
 if __name__ == "__main__":

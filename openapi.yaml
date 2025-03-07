@@ -1,7 +1,9 @@
 openapi: 3.1.0
 info:
   title: Loan Evaluation API
-  description: API for evaluating loan eligibility based on risk profiles, borrower checks, and SME risk rules (Rules 1-70).
+  description: >
+    API for evaluating loan eligibility based on risk profiles, borrower checks, and SME risk rules (Rules 1-70),
+    including an endpoint to retrieve the underwriter schema for detailed explanation generation.
   version: "1.0.0"
 servers:
   - url: https://loan-decision-api.onrender.com
@@ -155,3 +157,18 @@ paths:
                   confidence:
                     type: number
                     description: Confidence level of the decision.
+  /underwriter-schema:
+    get:
+      operationId: getUnderwriterSchema
+      summary: Retrieve the underwriter schema.
+      description: >
+        Returns the comprehensive underwriter schema containing instructions, output structure,
+        data source references, and fallback guidelines for generating detailed explanations of auto-approved loan applications.
+      responses:
+        "200":
+          description: Underwriter schema.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
