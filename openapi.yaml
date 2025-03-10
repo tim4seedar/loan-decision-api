@@ -13,8 +13,132 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-security:
-  - apiKeyAuth: []
+  schemas:
+    BorrowerTypeResponse:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["PASS", "FAIL"]
+        explanation:
+          type: string
+        confidence:
+          type: number
+      required:
+        - decision
+        - explanation
+        - confidence
+    BorrowerIDResponse:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["PASS", "CONDITIONAL APPROVAL"]
+        explanation:
+          type: string
+        confidence:
+          type: number
+      required:
+        - decision
+        - explanation
+        - confidence
+    OpenBankingResponse:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["PASS", "CONDITIONAL APPROVAL"]
+        explanation:
+          type: string
+        confidence:
+          type: number
+      required:
+        - decision
+        - explanation
+        - confidence
+    SMERiskResponse:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum: ["PASS", "FLAG/AI", "FLAG/UW", "FAIL", "REQUIREMENT", "CONDITIONAL APPROVAL"]
+        explanation:
+          type: string
+        confidence:
+          type: number
+      required:
+        - decision
+        - explanation
+        - confidence
+    UnderwriterSchema:
+      type: object
+      properties:
+        version:
+          type: string
+        instructions:
+          type: object
+          properties:
+            role:
+              type: string
+            objective:
+              type: string
+            prompt_guidelines:
+              type: array
+              items:
+                type: string
+            output_structure:
+              type: object
+              additionalProperties:
+                type: string
+          required:
+            - role
+            - objective
+            - prompt_guidelines
+            - output_structure
+        data_sources:
+          type: object
+          additionalProperties:
+            type: string
+        fallback:
+          type: string
+        audit_and_versioning:
+          type: object
+          properties:
+            rule_version:
+              type: string
+            timestamp:
+              type: string
+            audit_trail:
+              type: string
+          required:
+            - rule_version
+            - timestamp
+            - audit_trail
+        compliance_notes:
+          type: string
+      required:
+        - version
+        - instructions
+        - data_sources
+        - fallback
+        - audit_and_versioning
+        - compliance_notes
+    ProductionFallback:
+      type: object
+      properties:
+        function_name:
+          type: string
+        domain:
+          type: string
+        message:
+          type: string
+        action_id:
+          type: string
+      required:
+        - function_name
+        - domain
+        - message
+        - action_id
 paths:
   /evaluate/borrower-type:
     post:
@@ -38,15 +162,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  decision:
-                    type: string
-                    enum: [PASS, FAIL]
-                  explanation:
-                    type: string
-                  confidence:
-                    type: number
+                $ref: '#/components/schemas/BorrowerTypeResponse'
   /evaluate/borrower-id:
     post:
       operationId: evaluateBorrowerID
@@ -69,15 +185,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  decision:
-                    type: string
-                    enum: [PASS, FAIL]
-                  explanation:
-                    type: string
-                  confidence:
-                    type: number
+                $ref: '#/components/schemas/BorrowerIDResponse'
   /evaluate/open-banking:
     post:
       operationId: evaluateOpenBanking
@@ -100,22 +208,15 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  decision:
-                    type: string
-                    enum: [PASS, FAIL]
-                  explanation:
-                    type: string
-                  confidence:
-                    type: number
+                $ref: '#/components/schemas/OpenBankingResponse'
   /evaluate/sme-risk:
     post:
       operationId: evaluateSMERisk
       summary: Evaluate SME risk and loan eligibility.
       description: >
         This endpoint analyzes the SME profile, risk tier, stressed DSCR, loan amount, and loan type
-        to determine loan eligibility based on a comprehensive ruleset (Rules 1-70).
+        to determine loan eligibility based on a comprehensive ruleset (Rules 1-70). It may return a decision
+        of PASS, FLAG/AI, FLAG/UW, FAIL, REQUIREMENT, or CONDITIONAL APPROVAL.
       requestBody:
         required: true
         content:
@@ -125,11 +226,11 @@ paths:
               properties:
                 smeProfile:
                   type: string
-                  enum: [EB, ESB, NTB, SU]
+                  enum: ["EB", "ESB", "NTB", "SU"]
                   description: SME profile.
                 riskProfile:
                   type: string
-                  enum: [T1, T2, T3]
+                  enum: ["T1", "T2", "T3"]
                   description: Risk profile.
                 stressedDSCR:
                   type: number
@@ -139,8 +240,36 @@ paths:
                   description: Requested loan amount.
                 loanType:
                   type: string
-                  enum: [secured, unsecured]
+                  enum: ["secured", "unsecured"]
                   description: Type of loan.
+                provided_pg:
+                  type: number
+                  description: Fraction of required Personal Guarantee provided.
+                  default: 1.0
+                min_pg_required:
+                  type: number
+                  description: Minimum required Personal Guarantee fraction.
+                  default: 0.20
+                requires_debenture:
+                  type: boolean
+                  description: Indicates if a Debenture is required.
+                  default: false
+                has_debenture:
+                  type: boolean
+                  description: Indicates if a Debenture is provided.
+                  default: false
+                has_legal_charge:
+                  type: boolean
+                  description: True if a Legal Charge is in place for secured loans.
+                  default: true
+                is_due_diligence_complete:
+                  type: boolean
+                  description: True if AML/KYC and due diligence checks are complete.
+                  default: true
+                is_business_registered:
+                  type: boolean
+                  description: True if business registration is verified.
+                  default: true
               required:
                 - smeProfile
                 - riskProfile
@@ -153,31 +282,20 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  decision:
-                    type: string
-                    enum: [PASS, FLAG/AI, FLAG/UW, FAIL, REQUIREMENT]
-                    description: Loan decision.
-                  explanation:
-                    type: string
-                    description: Explanation for the decision.
-                  confidence:
-                    type: number
-                    description: Confidence level of the decision.
+                $ref: '#/components/schemas/SMERiskResponse'
   /underwriter-schema:
     get:
       operationId: getUnderwriterSchema
       summary: Retrieve the underwriter schema.
       description: >
-        Returns the comprehensive underwriter schema containing instructions, output structure,
-        data source references, and fallback guidelines for generating detailed explanations of auto-approved loan applications.
+        Returns the comprehensive underwriter schema. In staging mode, it returns the full underwriter schema;
+        in production mode, it returns a fallback response indicating that the requested action requires approval.
       responses:
         "200":
-          description: Underwriter schema.
+          description: Underwriter schema or production fallback response.
           content:
             application/json:
               schema:
-                type: object
-                properties: {}
-                additionalProperties: true
+                oneOf:
+                  - $ref: '#/components/schemas/UnderwriterSchema'
+                  - $ref: '#/components/schemas/ProductionFallback'

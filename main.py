@@ -59,12 +59,10 @@ UNDERWRITER_SCHEMA = {
             "compliance_notes": "Notes confirming adherence to regulatory requirements and internal lending policies, along with any documented exceptions."
         }
     },
-    "data_sources": {
-        "decisioning_gpt": (
-            "This process is self-referential; the same GPT that generates the decision is used to provide a detailed explanation of the applied business logic using the input scenario data.",
-            "external_data": "Includes verifications from external sources such as credit bureaus, open banking data, financial statements, and borrower identity checks."
-        )
-    },
+   "data_sources": {
+    "decisioning_gpt": "This process is self-referential; the same GPT that generates the decision is used to provide a detailed explanation of the applied business logic using the input scenario data.",
+    "external_data": "Includes verifications from external sources such as credit bureaus, open banking data, financial statements, and borrower identity checks."
+},
     "fallback": (
         "If any required data from the input scenario is missing, ambiguous, or fails verification, default to flagging the application for manual review. "
         "Clearly note which data points were insufficient and recommend obtaining additional information."
