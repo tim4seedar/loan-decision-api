@@ -143,7 +143,7 @@ def evaluate_open_banking(is_connected: bool) -> dict:
             "explanation": "Loan approved on condition that the borrower successfully connects Open Banking before funding."}
 
 def global_sme_checks(dscr: float, loan_amount: float) -> dict:
-    if dscr < 125:
+    if dscr < 1.25:
         return {"decision": "FAIL", "confidence": 0.99, "explanation": "DSCR <125%. Loan declined."}
     if loan_amount < 25001:
         return {"decision": "FAIL", "confidence": 0.99, "explanation": "Loan amount below £25,001. Does not meet minimum threshold."}
