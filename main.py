@@ -118,7 +118,7 @@ def evaluate_open_banking(is_connected: bool) -> dict:
 
 # --- Global checks common to all SME risk evaluations ---
 def global_sme_checks(dscr: float, loan_amount: float) -> dict:
-    if dscr < 125:
+    if dscr < 1.25:
         return {"decision": "FAIL", "confidence": 0.99, "explanation": "DSCR <125%. Loan declined."}
     if loan_amount < 25001:
         return {"decision": "FAIL", "confidence": 0.99, "explanation": "Loan amount below £25,001. Does not meet minimum threshold."}
@@ -131,7 +131,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
     max_loan = SME_PROFILES["EB"]["loan_secured_max"]
 
     # Rule 9-10: EB, T1, DSCR >150%
-    if risk_profile == "T1" and dscr > 150:
+    if risk_profile == "T1" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
             return {"decision": "PASS", "confidence": 0.90,
                     "explanation": "EB/T1 with DSCR >150% qualifies for an unsecured loan."}
@@ -140,7 +140,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "EB/T1 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 11-12: EB, T2, DSCR >150%
-    if risk_profile == "T2" and dscr > 150:
+    if risk_profile == "T2" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
             return {"decision": "PASS", "confidence": 0.87,
                     "explanation": "EB/T2 with DSCR >150% qualifies for an unsecured loan."}
@@ -149,7 +149,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "EB/T2 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 13-14: EB, T3, DSCR >150% → FLAG/AI
-    if risk_profile == "T3" and dscr > 150:
+    if risk_profile == "T3" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 100000:
             return {"decision": "FLAG/AI", "confidence": 0.75,
                     "explanation": "EB/T3 with DSCR >150% (unsecured): AI review required."}
@@ -157,8 +157,8 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
             return {"decision": "FLAG/AI", "confidence": 0.78,
                     "explanation": "EB/T3 with DSCR >150% (secured): AI review required."}
 
-    # Rule 15-16: EB, T1, DSCR between 134.9 and 150
-    if risk_profile == "T1" and 134.9 < dscr <= 150:
+    # Rule 15-16: EB, T1, DSCR between 134.9% and 150%
+    if risk_profile == "T1" and 1.349 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
             return {"decision": "PASS", "confidence": 0.85,
                     "explanation": "EB/T1 with DSCR just below 150% qualifies for an unsecured loan."}
@@ -167,7 +167,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "EB/T1 with DSCR just below 150% qualifies for a secured loan."}
 
     # Rule 17-20: EB, T2/T3, DSCR between 134.9 and 150
-    if 134.9 < dscr <= 150:
+    if 1.349 < dscr <= 1.50:
         if risk_profile == "T2":
             if loan_type == "unsecured" and loan_amount <= 100000:
                 return {"decision": "PASS", "confidence": 0.80,
@@ -184,7 +184,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                         "explanation": "EB/T3 with DSCR just below 150%: underwriter review required (secured)."}
 
     # Rule 21-26: EB, DSCR between 125 and 135%
-    if 125 < dscr <= 135:
+    if 1.25 < dscr <= 1.35:
         if risk_profile == "T1":
             if loan_type == "unsecured" and loan_amount <= 100000:
                 return {"decision": "PASS", "confidence": 0.78,
@@ -213,7 +213,7 @@ def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
 
 def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     # Rule 27-28: ESB, T1, DSCR >150%
-    if risk_profile == "T1" and dscr > 150:
+    if risk_profile == "T1" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 80000:
             return {"decision": "PASS", "confidence": 0.88,
                     "explanation": "ESB/T1 with DSCR >150% qualifies for an unsecured loan."}
@@ -222,7 +222,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T1 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 29-30: ESB, T2, DSCR >150%
-    if risk_profile == "T2" and dscr > 150:
+    if risk_profile == "T2" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 75000:
             return {"decision": "PASS", "confidence": 0.85,
                     "explanation": "ESB/T2 with DSCR >150% qualifies for an unsecured loan."}
@@ -231,7 +231,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T2 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 31-32: ESB, T3, DSCR >150%
-    if risk_profile == "T3" and dscr > 150:
+    if risk_profile == "T3" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 60000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "ESB/T3 with DSCR >150% (unsecured): AI review required."}
@@ -240,7 +240,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T3 with DSCR >150% (secured): underwriter review required."}
 
     # Rule 33-34: ESB, T1, DSCR between 135 and 150%
-    if risk_profile == "T1" and 135 < dscr <= 150:
+    if risk_profile == "T1" and 1.35 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 80000:
             return {"decision": "PASS", "confidence": 0.85,
                     "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for an unsecured loan."}
@@ -249,7 +249,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for a secured loan."}
 
     # Rule 35-36: ESB, T2, DSCR between 135 and 150%
-    if risk_profile == "T2" and 135 < dscr <= 150:
+    if risk_profile == "T2" and 1.35 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 75000:
             return {"decision": "PASS", "confidence": 0.82,
                     "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for an unsecured loan."}
@@ -258,7 +258,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for a secured loan."}
 
     # Rule 37-38: ESB, T3, DSCR between 135 and 150%
-    if risk_profile == "T3" and 135 < dscr <= 150:
+    if risk_profile == "T3" and 1.349 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 50000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "ESB/T3 with DSCR between 135%-150%: AI review required (unsecured)."}
@@ -267,7 +267,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T3 with DSCR between 135%-150%: underwriter review required (secured)."}
 
     # Rule 39-40: ESB, T1, DSCR between 125 and 135%
-    if risk_profile == "T1" and 125 < dscr <= 135:
+    if risk_profile == "T1" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
             return {"decision": "PASS", "confidence": 0.80,
                     "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for an unsecured loan."}
@@ -276,7 +276,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for a secured loan."}
 
     # Rule 41-42: ESB, T2, DSCR between 125 and less than 135%
-    if risk_profile == "T2" and 125 < dscr < 135:
+    if risk_profile == "T2" and 1.25 < dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 50000:
             return {"decision": "PASS", "confidence": 0.75,
                     "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for an unsecured loan."}
@@ -285,7 +285,7 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
                     "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for a secured loan."}
 
     # Rule 43-44: ESB, T3, DSCR between 125 and less than 135%
-    if risk_profile == "T3" and 125 < dscr < 135:
+    if risk_profile == "T3" and 1.25 < dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "ESB/T3 with DSCR >125% and <135%: AI review required (unsecured)."}
@@ -299,34 +299,34 @@ def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
 
 def evaluate_ntb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     # Rule 45-46: NTB, T1, DSCR >125%
-    if risk_profile == "T1" and dscr > 125:
+    if risk_profile == "T1" and dscr > 1.25:
         if loan_type == "unsecured" and loan_amount <= 60000:
             return {"decision": "PASS", "confidence": 0.80,
                     "explanation": "NTB/T1 with DSCR >125% qualifies for an unsecured loan."}
-        if loan_type == "secured" and dscr > 150 and loan_amount <= 100000:
+        if loan_type == "secured" and dscr > 1.50 and loan_amount <= 100000:
             return {"decision": "PASS", "confidence": 0.85,
                     "explanation": "NTB/T1 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 47-48: NTB, T2, DSCR >135%
-    if risk_profile == "T2" and dscr > 135:
+    if risk_profile == "T2" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
             return {"decision": "PASS", "confidence": 0.78,
                     "explanation": "NTB/T2 with DSCR >135% qualifies for an unsecured loan."}
-        if loan_type == "secured" and dscr > 150 and loan_amount <= 100000:
+        if loan_type == "secured" and dscr > 1.50 and loan_amount <= 100000:
             return {"decision": "PASS", "confidence": 0.80,
                     "explanation": "NTB/T2 with DSCR >150% qualifies for a secured loan."}
 
     # Rule 49-50: NTB, T3, DSCR >135%
-    if risk_profile == "T3" and dscr > 135:
+    if risk_profile == "T3" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "NTB/T3 with DSCR >135%: AI review required (unsecured)."}
-        if loan_type == "secured" and dscr > 125 and loan_amount <= 150000:
+        if loan_type == "secured" and dscr > 1.25 and loan_amount <= 150000:
             return {"decision": "FLAG/UW", "confidence": 0.72,
                     "explanation": "NTB/T3 with DSCR >125%: underwriter review required (secured)."}
 
     # Rule 51-52: NTB, T3, DSCR between 125 and 135%
-    if risk_profile == "T3" and 125 < dscr <= 135:
+    if risk_profile == "T3" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "NTB/T3 with DSCR between 125%-135%: AI review required (unsecured)."}
@@ -339,7 +339,7 @@ def evaluate_ntb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_t
 
 def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     # Rule 53-54: SU, T1, DSCR >135%
-    if risk_profile == "T1" and dscr > 135:
+    if risk_profile == "T1" and dscr > 1.349:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "PASS", "confidence": 0.78,
                     "explanation": "SU/T1 with DSCR >135% qualifies for an unsecured loan."}
@@ -348,7 +348,7 @@ def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "SU/T1 with DSCR >135% qualifies for a secured loan."}
 
     # Rule 55-56: SU, T2, DSCR >135%
-    if risk_profile == "T2" and dscr > 135:
+    if risk_profile == "T2" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FLAG/AI", "confidence": 0.72,
                     "explanation": "SU/T2 with DSCR >135%: AI review required (unsecured)."}
@@ -357,7 +357,7 @@ def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "SU/T2 with DSCR >135%: AI review required (secured)."}
 
     # Rule 57-58: SU, T3, DSCR >135%
-    if risk_profile == "T3" and dscr > 135:
+    if risk_profile == "T3" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FLAG/UW", "confidence": 0.70,
                     "explanation": "SU/T3 with DSCR >135%: underwriter review required (unsecured)."}
@@ -366,7 +366,7 @@ def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "SU/T3 with DSCR >135%: underwriter review required (secured)."}
 
     # Rule 59-60: SU, T1, DSCR between 125 and 135%
-    if risk_profile == "T1" and 125 < dscr <= 135:
+    if risk_profile == "T1" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FLAG/AI", "confidence": 0.70,
                     "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (unsecured)."}
@@ -375,7 +375,7 @@ def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (secured)."}
 
     # Rule 61-62: SU, T2, DSCR <135% → FAIL
-    if risk_profile == "T2" and dscr < 135:
+    if risk_profile == "T2" and dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             return {"decision": "FAIL", "confidence": 0.99,
                     "explanation": "SU/T2 with DSCR <135% (unsecured): Loan declined."}
@@ -384,7 +384,7 @@ def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_ty
                     "explanation": "SU/T2 with DSCR <135% (secured): Loan declined."}
 
     # Rule 63-64: SU, T3, DSCR <135% → FAIL
-    if risk_profile == "T3" and dscr < 135:
+    if risk_profile == "T3" and dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 26000:
             return {"decision": "FAIL", "confidence": 0.99,
                     "explanation": "SU/T3 with DSCR <135% (unsecured): Loan declined."}
