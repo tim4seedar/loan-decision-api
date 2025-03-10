@@ -7,6 +7,14 @@ info:
   version: "1.0.0"
 servers:
   - url: https://loan-decision-api.onrender.com
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+security:
+  - apiKeyAuth: []
 paths:
   /evaluate/borrower-type:
     post:
