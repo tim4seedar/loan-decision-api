@@ -33,7 +33,7 @@ components:
       properties:
         decision:
           type: string
-          enum: ["PASS", "CONDITIONAL APPROVAL"]
+          enum: ["PASS", "CONDITIONAL_PASS", "FAIL"]
         explanation:
           type: string
         confidence:
@@ -47,7 +47,7 @@ components:
       properties:
         decision:
           type: string
-          enum: ["PASS", "CONDITIONAL APPROVAL"]
+          enum: ["PASS", "CONDITIONAL_PASS", "FAIL"]
         explanation:
           type: string
         confidence:
@@ -61,7 +61,7 @@ components:
       properties:
         decision:
           type: string
-          enum: ["PASS", "FLAG/AI", "FLAG/UW", "FAIL", "REQUIREMENT", "CONDITIONAL APPROVAL"]
+          enum: ["PASS", "FLAG/AI", "FLAG/UW", "FAIL", "CONDITIONAL_PASS"]
         explanation:
           type: string
         confidence:
@@ -216,7 +216,7 @@ paths:
       description: >
         This endpoint analyzes the SME profile, risk tier, stressed DSCR, loan amount, and loan type
         to determine loan eligibility based on a comprehensive ruleset (Rules 1-70). It may return a decision
-        of PASS, FLAG/AI, FLAG/UW, FAIL, REQUIREMENT, or CONDITIONAL APPROVAL.
+        of PASS, FLAG/AI, FLAG/UW, FAIL, or CONDITIONAL_PASS.
       requestBody:
         required: true
         content:

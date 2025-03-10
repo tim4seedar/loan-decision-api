@@ -4,7 +4,46 @@ from pydantic import BaseModel, Field
 from typing import Dict, List
 from datetime import datetime
 import uvicorn
+import logging
 
+# --------------------------------------------------
+# DECISIONS Definitions
+# --------------------------------------------------
+DECISIONS = {
+    "PASS": {
+        "value": "PASS",
+        "definition": "The application is approved without any conditions."
+    },
+    "FAIL": {
+        "value": "FAIL",
+        "definition": "The application is declined."
+    },
+    "CONDITIONAL_PASS": {
+        "value": "CONDITIONAL_PASS",
+        "definition": "The application is approved on condition that certain requirements are met."
+    },
+    "FLAG_AI": {
+        "value": "FLAG/AI",
+        "definition": "The application requires an AI review."
+    },
+    "FLAG_UW": {
+        "value": "FLAG/UW",
+        "definition": "The application requires an underwriter review."
+    }
+}
+# --------------------------------------------------
+# DECISIONS Definitions
+# --------------------------------------------------
+# Configure structured logging
+logging.basicConfig(
+    level=logging.INFO,  # You can adjust the log level (DEBUG, INFO, WARNING, ERROR)
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger(__name__)
+
+class EvaluationError(Exception):
+    """Custom exception for errors during loan evaluation."""
+    pass
 # --------------------------------------------------
 # Environment Detection
 # --------------------------------------------------
@@ -39,7 +78,7 @@ UNDERWRITER_SCHEMA = {
             "include an audit trail with rule versioning and timestamps, and reference specific rule IDs, thresholds, and risk adjustments for full transparency and compliance."
         ),
         "prompt_guidelines": [
-            "Begin with a 'Decisioning Summary' that states the final decision (PASS, FLAG/AI, FLAG/UW, FAIL, or REQUIREMENT) and the overall confidence rating.",
+            "Begin with a 'Decisioning Summary' that states the final decision (PASS, FLAG/AI, FLAG/UW, FAIL, or CONDITIONAL_PASS) and the overall confidence rating.",
             "Include a 'Business Logic Explanation' section detailing all key rules, risk adjustments, and calculations applied. Reference specific rule IDs and thresholds where applicable.",
             "Provide an 'Input Scenario Analysis' section summarizing the complete input data, including SME profile, risk profile, DSCR, loan amount, loan type, borrower type, credit checks, and verification statuses.",
             "Enumerate any triggered deterministic rules along with detailed explanations of their impact on the decision.",
@@ -90,6 +129,63 @@ def get_underwriter_schema():
     return schema
 
 # --------------------------------------------------
+# SME_PROFILES Dictionary
+# --------------------------------------------------
+SME_PROFILES = {
+    "EB": {
+        "label": "Established Business",
+        "confidence": 0.95,
+        "loan_unsecured": {
+            "min": 25000,  # current value
+            "max": 150000  # current value
+        },
+        "loan_secured": {
+            "min": 25000,  # current value
+            "max": 250000  # current value
+        },
+        "financials_required": ["3 years certified accounts", "2 years accounts + 12-month forecast"]
+    },
+    "ESB": {
+        "label": "Early-Stage Business",
+        "confidence": 0.85,
+        "loan_unsecured": {
+            "min": 25000,  # current value
+            "max": 75000   # current value
+        },
+        "loan_secured": {
+            "min": 25000,  # current value
+            "max": 150000  # current value
+        },
+        "financials_required": ["1 year certified accounts", "12+ months management accounts"]
+    },
+    "NTB": {
+        "label": "Newly Trading Business",
+        "confidence": 0.75,
+        "loan_unsecured": {
+            "min": 25000,  # current value
+            "max": 60000   # current value
+        },
+        "loan_secured": {
+            "min": 25000,  # current value
+            "max": 100000  # current value
+        },
+        "financials_required": ["3-11 months management accounts"]
+    },
+    "SU": {
+        "label": "Startup",
+        "confidence": 0.60,
+        "loan_unsecured": {
+            "min": 26000,  # current value
+            "max": 40000   # current value
+        },
+        "loan_secured": {
+            "min": 26000,  # current value
+            "max": 80000   # current value
+        },
+        "financials_required": ["No management accounts, pre-revenue"]
+    }
+}
+# --------------------------------------------------
 # Configuration & Business Logic
 # --------------------------------------------------
 CONFIG = {"loan_adjustment_factor": 0.10}
@@ -98,13 +194,6 @@ RISK_PROFILES = {
     "T1": {"label": "Low Risk", "missed_payments": (0, 1), "ccjs_defaults": (0, 2500), "iva_liquidation_years": 5, "confidence": 0.95},
     "T2": {"label": "Medium Risk", "missed_payments": (0, 2), "ccjs_defaults": (2500, 3000), "iva_liquidation_years": 5, "confidence": 0.85},
     "T3": {"label": "High Risk", "missed_payments": (3, float('inf')), "ccjs_defaults": (3000, 5000), "iva_liquidation_years": 5, "confidence": 0.70}
-}
-
-SME_PROFILES = {
-    "EB": {"label": "Established Business", "financials_required": ["3 years certified accounts", "2 years accounts + 12-month forecast"], "loan_unsecured_min": 25000, "loan_unsecured_max": 200000, "loan_secured_max": 250000, "confidence": 0.95},
-    "ESB": {"label": "Early-Stage Business", "financials_required": ["1 year certified accounts", "12+ months management accounts"], "loan_unsecured_min": 25000, "loan_unsecured_max": 80000, "loan_secured_max": 150000, "confidence": 0.85},
-    "NTB": {"label": "Newly Trading Business", "financials_required": ["3-11 months management accounts"], "loan_unsecured_min": 25000, "loan_unsecured_max": 60000, "loan_secured_max": 100000, "confidence": 0.75},
-    "SU": {"label": "Startup", "financials_required": ["No management accounts, pre-revenue"], "loan_unsecured_min": 26000, "loan_unsecured_max": 40000, "loan_secured_max": 80000, "confidence": 0.60}
 }
 
 RISK_CONFIDENCE_ADJUSTMENTS = {"T1": 0.10, "T2": 0.00, "T3": -0.15}
@@ -132,14 +221,14 @@ def evaluate_borrower_id_verification(is_verified: bool) -> dict:
     if is_verified:
         return {"decision": "PASS", "confidence": 0.98,
                 "explanation": "Borrower ID has been verified."}
-    return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
+    return {"decision": "CONDITIONAL_PASS", "confidence": 0.99,
             "explanation": "Loan approved on condition that borrower provides valid ID verification before funding."}
 
 def evaluate_open_banking(is_connected: bool) -> dict:
     if is_connected:
         return {"decision": "PASS", "confidence": 0.95,
                 "explanation": "Open banking is connected."}
-    return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
+    return {"decision": "CONDITIONAL_PASS", "confidence": 0.99,
             "explanation": "Loan approved on condition that the borrower successfully connects Open Banking before funding."}
 
 def global_sme_checks(dscr: float, loan_amount: float) -> dict:
@@ -149,162 +238,607 @@ def global_sme_checks(dscr: float, loan_amount: float) -> dict:
         return {"decision": "FAIL", "confidence": 0.99, "explanation": "Loan amount below £25,001. Does not meet minimum threshold."}
     return {}
 
-def evaluate_eb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+# --------------------------------------------------
+# EB Evaluations
+# --------------------------------------------------
+def evaluate_eb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    """
+    Evaluate the loan eligibility for an Established Business (EB) SME based on risk profile, DSCR, 
+    loan amount, and loan type.
+
+    Parameters:
+        sme_profile (str): The SME profile (must be "EB" for this function).
+        risk_profile (str): The risk tier, e.g., "T1", "T2", or "T3".
+        dscr (float): The Debt Service Coverage Ratio.
+        loan_amount (float): The requested loan amount.
+        loan_type (str): The type of loan ("unsecured" or "secured").
+
+    Returns:
+        dict: A dictionary with keys "decision", "confidence", and "explanation".
+              The decision is one of the values from the DECISIONS dictionary.
+
+    The function applies different thresholds based on:
+      - The risk tier (T1, T2, or T3)
+      - DSCR ranges (e.g., DSCR >= 1.50, 1.349 < DSCR <= 1.50, and 1.25 < DSCR <= 1.35)
+      - Hardcoded loan amount limits for unsecured and secured loans
+
+    If none of the conditions are met, the function returns a fallback decision.
+    """
+    # Safeguard: ensure that only EB profiles are processed here.
+    if sme_profile != "EB":
+        error_msg = f"evaluate_eb_risk can only evaluate EB profiles. Received: {sme_profile}"
+        logger.error(error_msg)
+        raise EvaluationError(error_msg)
+        
     base_conf = SME_PROFILES["EB"]["confidence"]
-    min_loan = SME_PROFILES["EB"]["loan_unsecured_min"]
-    max_loan = SME_PROFILES["EB"]["loan_secured_max"]
+    min_unsecured = SME_PROFILES["EB"]["loan_unsecured"]["min"]
+    max_unsecured = SME_PROFILES["EB"]["loan_unsecured"]["max"]
+    min_secured = SME_PROFILES["EB"]["loan_secured"]["min"]
+    max_secured = SME_PROFILES["EB"]["loan_secured"]["max"]
+    
+    # Condition: T1 and DSCR >= 1.50
     if risk_profile == "T1" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.90, "explanation": "EB/T1 with DSCR >150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.90,
+                        "explanation": "EB/T1 with DSCR >150% qualifies for an unsecured loan."}
+            logger.info(f"EB Evaluation (T1, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 250000:
-            return {"decision": "PASS", "confidence": 0.92, "explanation": "EB/T1 with DSCR >150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.92,
+                        "explanation": "EB/T1 with DSCR >150% qualifies for a secured loan."}
+            logger.info(f"EB Evaluation (T1, secured): {decision}")
+            return decision
+
+    # Condition: T2 and DSCR >= 1.50
     if risk_profile == "T2" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.87, "explanation": "EB/T2 with DSCR >150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.87,
+                        "explanation": "EB/T2 with DSCR >150% qualifies for an unsecured loan."}
+            logger.info(f"EB Evaluation (T2, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 250000:
-            return {"decision": "PASS", "confidence": 0.89, "explanation": "EB/T2 with DSCR >150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.89,
+                        "explanation": "EB/T2 with DSCR >150% qualifies for a secured loan."}
+            logger.info(f"EB Evaluation (T2, secured): {decision}")
+            return decision
+
+    # Condition: T3 and DSCR >= 1.50
     if risk_profile == "T3" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 100000:
-            return {"decision": "FLAG/AI", "confidence": 0.75, "explanation": "EB/T3 with DSCR >150% (unsecured): AI review required."}
+            decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.75,
+                        "explanation": "EB/T3 with DSCR >150% (unsecured): AI review required."}
+            logger.info(f"EB Evaluation (T3, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 250000:
-            return {"decision": "FLAG/AI", "confidence": 0.78, "explanation": "EB/T3 with DSCR >150% (secured): AI review required."}
+            decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.78,
+                        "explanation": "EB/T3 with DSCR >150% (secured): AI review required."}
+            logger.info(f"EB Evaluation (T3, secured): {decision}")
+            return decision
+
+    # Condition: T1 and 1.349 < DSCR <= 1.50
     if risk_profile == "T1" and 1.349 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.85, "explanation": "EB/T1 with DSCR just below 150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.85,
+                        "explanation": "EB/T1 with DSCR just below 150% qualifies for an unsecured loan."}
+            logger.info(f"EB Evaluation (T1, just below 150%, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 250000:
-            return {"decision": "PASS", "confidence": 0.88, "explanation": "EB/T1 with DSCR just below 150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.88,
+                        "explanation": "EB/T1 with DSCR just below 150% qualifies for a secured loan."}
+            logger.info(f"EB Evaluation (T1, just below 150%, secured): {decision}")
+            return decision
+
+    # Condition: 1.349 < DSCR <= 1.50 for T2 and T3
     if 1.349 < dscr <= 1.50:
         if risk_profile == "T2":
             if loan_type == "unsecured" and loan_amount <= 100000:
-                return {"decision": "PASS", "confidence": 0.80, "explanation": "EB/T2 with DSCR just below 150% qualifies for an unsecured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.80,
+                            "explanation": "EB/T2 with DSCR just below 150% qualifies for an unsecured loan."}
+                logger.info(f"EB Evaluation (T2, just below 150%, unsecured): {decision}")
+                return decision
             if loan_type == "secured" and loan_amount <= 250000:
-                return {"decision": "PASS", "confidence": 0.83, "explanation": "EB/T2 with DSCR just below 150% qualifies for a secured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.83,
+                            "explanation": "EB/T2 with DSCR just below 150% qualifies for a secured loan."}
+                logger.info(f"EB Evaluation (T2, just below 150%, secured): {decision}")
+                return decision
         if risk_profile == "T3":
             if loan_type == "unsecured" and loan_amount <= 75000:
-                return {"decision": "FLAG/UW", "confidence": 0.70, "explanation": "EB/T3 with DSCR just below 150%: underwriter review required (unsecured)."}
+                decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.70,
+                            "explanation": "EB/T3 with DSCR just below 150%: underwriter review required (unsecured)."}
+                logger.info(f"EB Evaluation (T3, just below 150%, unsecured): {decision}")
+                return decision
             if loan_type == "secured" and loan_amount <= 250000:
-                return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "EB/T3 with DSCR just below 150%: underwriter review required (secured)."}
+                decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.72,
+                            "explanation": "EB/T3 with DSCR just below 150%: underwriter review required (secured)."}
+                logger.info(f"EB Evaluation (T3, just below 150%, secured): {decision}")
+                return decision
+
+    # Condition: DSCR between 1.25 and 1.35
     if 1.25 < dscr <= 1.35:
         if risk_profile == "T1":
             if loan_type == "unsecured" and loan_amount <= 100000:
-                return {"decision": "PASS", "confidence": 0.78, "explanation": "EB/T1 with DSCR between 125%-135% qualifies for an unsecured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.78,
+                            "explanation": "EB/T1 with DSCR between 125%-135% qualifies for an unsecured loan."}
+                logger.info(f"EB Evaluation (T1, 1.25<DSCR<=1.35, unsecured): {decision}")
+                return decision
             if loan_type == "secured" and loan_amount <= 250000:
-                return {"decision": "PASS", "confidence": 0.82, "explanation": "EB/T1 with DSCR between 125%-135% qualifies for a secured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.82,
+                            "explanation": "EB/T1 with DSCR between 125%-135% qualifies for a secured loan."}
+                logger.info(f"EB Evaluation (T1, 1.25<DSCR<=1.35, secured): {decision}")
+                return decision
         if risk_profile == "T2":
             if loan_type == "unsecured" and loan_amount <= 75000:
-                return {"decision": "PASS", "confidence": 0.75, "explanation": "EB/T2 with DSCR between 125%-135% qualifies for an unsecured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.75,
+                            "explanation": "EB/T2 with DSCR between 125%-135% qualifies for an unsecured loan."}
+                logger.info(f"EB Evaluation (T2, 1.25<DSCR<=1.35, unsecured): {decision}")
+                return decision
             if loan_type == "secured" and loan_amount <= 250000:
-                return {"decision": "PASS", "confidence": 0.79, "explanation": "EB/T2 with DSCR between 125%-135% qualifies for a secured loan."}
+                decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.79,
+                            "explanation": "EB/T2 with DSCR between 125%-135% qualifies for a secured loan."}
+                logger.info(f"EB Evaluation (T2, 1.25<DSCR<=1.35, secured): {decision}")
+                return decision
         if risk_profile == "T3":
             if loan_type == "unsecured" and loan_amount <= 50000:
-                return {"decision": "FLAG/AI", "confidence": 0.65, "explanation": "EB/T3 with DSCR between 125%-135%: AI review required (unsecured)."}
+                decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.65,
+                            "explanation": "EB/T3 with DSCR between 125%-135%: AI review required (unsecured)."}
+                logger.info(f"EB Evaluation (T3, 1.25<DSCR<=1.35, unsecured): {decision}")
+                return decision
             if loan_type == "secured" and loan_amount <= 250000:
-                return {"decision": "FLAG/UW", "confidence": 0.70, "explanation": "EB/T3 with DSCR between 125%-135%: underwriter review required (secured)."}
-    return {"decision": "REQUIREMENT", "confidence": 0.99, "explanation": "Debenture and a minimum of 20% personal guarantee (PG) required."}
+                decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.70,
+                            "explanation": "EB/T3 with DSCR between 125%-135%: underwriter review required (secured)."}
+                logger.info(f"EB Evaluation (T3, 1.25<DSCR<=1.35, secured): {decision}")
+                return decision
 
-def evaluate_esb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    # Fallback
+    decision = {"decision": DECISIONS["CONDITIONAL_PASS"]["value"], "confidence": 0.99,
+                "explanation": "Debenture and a minimum of 20% personal guarantee (PG) required."}
+    logger.info(f"EB Evaluation fallback: {decision}")
+    return decision
+
+# --------------------------------------------------
+# ESB Evaluations
+# --------------------------------------------------
+def evaluate_esb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    """
+    Evaluate the loan eligibility for an Early-Stage Business (ESB) SME based on risk profile, DSCR, 
+    loan amount, and loan type.
+
+    Parameters:
+        sme_profile (str): The SME profile (must be "ESB" for this function).
+        risk_profile (str): The risk tier (e.g., "T1", "T2", or "T3").
+        dscr (float): The Debt Service Coverage Ratio.
+        loan_amount (float): The requested loan amount.
+        loan_type (str): The type of loan ("unsecured" or "secured").
+
+    Returns:
+        dict: A dictionary with keys "decision", "confidence", and "explanation".
+              The decision is one of the values from the DECISIONS dictionary.
+
+    The function applies different thresholds based on:
+      - The risk tier (T1, T2, or T3)
+      - DSCR ranges tailored to ESB requirements
+      - Hardcoded loan amount limits for unsecured and secured loans specific to ESB
+
+    If none of the conditions are met, the function returns a fallback decision.
+    """
+    # Safeguard: ensure that only ESB profiles are processed here.
+    if sme_profile != "ESB":
+        error_msg = f"evaluate_esb_risk can only evaluate ESB profiles. Received: {sme_profile}"
+        logger.error(error_msg)
+        raise EvaluationError(error_msg)
+    
+    base_conf = SME_PROFILES["ESB"]["confidence"]
+    min_unsecured = SME_PROFILES["ESB"]["loan_unsecured"]["min"]
+    max_unsecured = SME_PROFILES["ESB"]["loan_unsecured"]["max"]
+    min_secured = SME_PROFILES["ESB"]["loan_secured"]["min"]
+    max_secured = SME_PROFILES["ESB"]["loan_secured"]["max"]
+    
+    # T1 and DSCR > 1.50
     if risk_profile == "T1" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 80000:
-            return {"decision": "PASS", "confidence": 0.88, "explanation": "ESB/T1 with DSCR >150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.88,
+                        "explanation": "ESB/T1 with DSCR >150% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T1, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.90, "explanation": "ESB/T1 with DSCR >150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.90,
+                        "explanation": "ESB/T1 with DSCR >150% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T1, secured): {decision}")
+            return decision
+
+    # T2 and DSCR > 1.50
     if risk_profile == "T2" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 75000:
-            return {"decision": "PASS", "confidence": 0.85, "explanation": "ESB/T2 with DSCR >150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.85,
+                        "explanation": "ESB/T2 with DSCR >150% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T2, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.87, "explanation": "ESB/T2 with DSCR >150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.87,
+                        "explanation": "ESB/T2 with DSCR >150% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T2, secured): {decision}")
+            return decision
+
+    # T3 and DSCR > 1.50
     if risk_profile == "T3" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 60000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "ESB/T3 with DSCR >150% (unsecured): AI review required."}
+            decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.70,
+                        "explanation": "ESB/T3 with DSCR >150% (unsecured): AI review required."}
+            logger.info(f"ESB Evaluation (T3, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "ESB/T3 with DSCR >150% (secured): underwriter review required."}
+            decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.72,
+                        "explanation": "ESB/T3 with DSCR >150% (secured): underwriter review required."}
+            logger.info(f"ESB Evaluation (T3, secured): {decision}")
+            return decision
+
+    # T1 and 1.35 < DSCR <= 1.50
     if risk_profile == "T1" and 1.35 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 80000:
-            return {"decision": "PASS", "confidence": 0.85, "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.85,
+                        "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T1, 1.35<DSCR<=1.50, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.87, "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.87,
+                        "explanation": "ESB/T1 with DSCR between 135%-150% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T1, 1.35<DSCR<=1.50, secured): {decision}")
+            return decision
+
+    # T2 and 1.35 < DSCR <= 1.50
     if risk_profile == "T2" and 1.35 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 75000:
-            return {"decision": "PASS", "confidence": 0.82, "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.82,
+                        "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T2, 1.35<DSCR<=1.50, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.85, "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.85,
+                        "explanation": "ESB/T2 with DSCR between 135%-150% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T2, 1.35<DSCR<=1.50, secured): {decision}")
+            return decision
+
+    # T3 and 1.349 < DSCR <= 1.50
     if risk_profile == "T3" and 1.349 < dscr <= 1.50:
         if loan_type == "unsecured" and loan_amount <= 50000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "ESB/T3 with DSCR between 135%-150%: AI review required (unsecured)."}
+            decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.70,
+                        "explanation": "ESB/T3 with DSCR between 135%-150%: AI review required (unsecured)."}
+            logger.info(f"ESB Evaluation (T3, 1.349<DSCR<=1.50, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "ESB/T3 with DSCR between 135%-150%: underwriter review required (secured)."}
+            decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.72,
+                        "explanation": "ESB/T3 with DSCR between 135%-150%: underwriter review required (secured)."}
+            logger.info(f"ESB Evaluation (T3, 1.349<DSCR<=1.50, secured): {decision}")
+            return decision
+
+    # T1 and 1.25 < DSCR <= 1.35
     if risk_profile == "T1" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
-            return {"decision": "PASS", "confidence": 0.80, "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.80,
+                        "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T1, 1.25<DSCR<=1.35, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.83, "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.83,
+                        "explanation": "ESB/T1 with DSCR between 125%-135% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T1, 1.25<DSCR<=1.35, secured): {decision}")
+            return decision
+
+    # T2 and 1.25 < DSCR < 1.35
     if risk_profile == "T2" and 1.25 < dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 50000:
-            return {"decision": "PASS", "confidence": 0.75, "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for an unsecured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.75,
+                        "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for an unsecured loan."}
+            logger.info(f"ESB Evaluation (T2, 1.25<DSCR<1.35, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "PASS", "confidence": 0.78, "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for a secured loan."}
+            decision = {"decision": DECISIONS["PASS"]["value"], "confidence": 0.78,
+                        "explanation": "ESB/T2 with DSCR >125% and <135% qualifies for a secured loan."}
+            logger.info(f"ESB Evaluation (T2, 1.25<DSCR<1.35, secured): {decision}")
+            return decision
+
+    # T3 and 1.25 < DSCR < 1.35
     if risk_profile == "T3" and 1.25 < dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "ESB/T3 with DSCR >125% and <135%: AI review required (unsecured)."}
+            decision = {"decision": DECISIONS["FLAG_AI"]["value"], "confidence": 0.70,
+                        "explanation": "ESB/T3 with DSCR >125% and <135%: AI review required (unsecured)."}
+            logger.info(f"ESB Evaluation (T3, 1.25<DSCR<1.35, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "ESB/T3 with DSCR >125% and <135%: underwriter review required (secured)."}
-    return {"decision": "REQUIREMENT", "confidence": 0.99, "explanation": "Debenture and a minimum of 25% personal guarantee (PG) required."}
+            decision = {"decision": DECISIONS["FLAG_UW"]["value"], "confidence": 0.72,
+                        "explanation": "ESB/T3 with DSCR >125% and <135%: underwriter review required (secured)."}
+            logger.info(f"ESB Evaluation (T3, 1.25<DSCR<1.35, secured): {decision}")
+            return decision
 
-def evaluate_ntb_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    # Fallback decision
+    decision = {"decision": DECISIONS["CONDITIONAL_PASS"]["value"], "confidence": 0.99,
+                "explanation": "Debenture and a minimum of 25% personal guarantee (PG) required."}
+    logger.info(f"ESB Evaluation fallback: {decision}")
+    return decision
+
+# --------------------------------------------------
+# NTB Evaluations
+# --------------------------------------------------
+def evaluate_ntb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    """
+    Evaluate the loan eligibility for a Newly Trading Business (NTB) SME based on risk profile, DSCR, 
+    loan amount, and loan type.
+
+    Parameters:
+        sme_profile (str): The SME profile (must be "NTB" for this function).
+        risk_profile (str): The risk tier (e.g., "T1", "T2", or "T3").
+        dscr (float): The Debt Service Coverage Ratio.
+        loan_amount (float): The requested loan amount.
+        loan_type (str): The type of loan ("unsecured" or "secured").
+
+    Returns:
+        dict: A dictionary with keys "decision", "confidence", and "explanation".
+              The decision is one of the values from the DECISIONS dictionary.
+
+    The function applies different thresholds based on:
+      - The risk tier (T1, T2, or T3)
+      - DSCR ranges specific to NTB characteristics
+      - Hardcoded loan amount limits for unsecured and secured loans defined for NTB
+
+    If none of the conditions are met, the function returns a fallback decision.
+    """
+    # Safeguard: ensure that only NTB profiles are processed here.
+    if sme_profile != "NTB":
+        error_msg = f"evaluate_ntb_risk can only evaluate NTB profiles. Received: {sme_profile}"
+        logger.error(error_msg)
+        raise EvaluationError(error_msg)
+        
+    base_conf = SME_PROFILES["NTB"]["confidence"]
+    min_unsecured = SME_PROFILES["NTB"]["loan_unsecured"]["min"]
+    max_unsecured = SME_PROFILES["NTB"]["loan_unsecured"]["max"]
+    min_secured = SME_PROFILES["NTB"]["loan_secured"]["min"]
+    max_secured = SME_PROFILES["NTB"]["loan_secured"]["max"]
+    
+    # NTB: Risk Tier T1 with DSCR > 1.25
     if risk_profile == "T1" and dscr > 1.25:
         if loan_type == "unsecured" and loan_amount <= 60000:
-            return {"decision": "PASS", "confidence": 0.80, "explanation": "NTB/T1 with DSCR >125% qualifies for an unsecured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.80,
+                "explanation": "NTB/T1 with DSCR >125% qualifies for an unsecured loan."
+            }
+            logger.info(f"NTB Evaluation (T1, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and dscr > 1.50 and loan_amount <= 100000:
-            return {"decision": "PASS", "confidence": 0.85, "explanation": "NTB/T1 with DSCR >150% qualifies for a secured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.85,
+                "explanation": "NTB/T1 with DSCR >150% qualifies for a secured loan."
+            }
+            logger.info(f"NTB Evaluation (T1, secured): {decision}")
+            return decision
+
+    # NTB: Risk Tier T2 with DSCR > 1.35
     if risk_profile == "T2" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
-            return {"decision": "PASS", "confidence": 0.78, "explanation": "NTB/T2 with DSCR >135% qualifies for an unsecured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.78,
+                "explanation": "NTB/T2 with DSCR >135% qualifies for an unsecured loan."
+            }
+            logger.info(f"NTB Evaluation (T2, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and dscr > 1.50 and loan_amount <= 100000:
-            return {"decision": "PASS", "confidence": 0.80, "explanation": "NTB/T2 with DSCR >150% qualifies for a secured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.80,
+                "explanation": "NTB/T2 with DSCR >150% qualifies for a secured loan."
+            }
+            logger.info(f"NTB Evaluation (T2, secured): {decision}")
+            return decision
+
+    # NTB: Risk Tier T3 with DSCR > 1.35
     if risk_profile == "T3" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 60000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "NTB/T3 with DSCR >135%: AI review required (unsecured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.70,
+                "explanation": "NTB/T3 with DSCR >135%: AI review required (unsecured)."
+            }
+            logger.info(f"NTB Evaluation (T3, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and dscr > 1.25 and loan_amount <= 150000:
-            return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "NTB/T3 with DSCR >125%: underwriter review required (secured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_UW"]["value"],
+                "confidence": 0.72,
+                "explanation": "NTB/T3 with DSCR >125%: underwriter review required (secured)."
+            }
+            logger.info(f"NTB Evaluation (T3, secured): {decision}")
+            return decision
+
+    # NTB: Risk Tier T3 with DSCR between 1.25 and 1.35
     if risk_profile == "T3" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "NTB/T3 with DSCR between 125%-135%: AI review required (unsecured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.70,
+                "explanation": "NTB/T3 with DSCR between 125%-135%: AI review required (unsecured)."
+            }
+            logger.info(f"NTB Evaluation (T3, unsecured, DSCR 1.25-1.35): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 150000:
-            return {"decision": "FLAG/UW", "confidence": 0.72, "explanation": "NTB/T3 with DSCR between 125%-135%: underwriter review required (secured)."}
-    return {"decision": "REQUIREMENT", "confidence": 0.99, "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."}
+            decision = {
+                "decision": DECISIONS["FLAG_UW"]["value"],
+                "confidence": 0.72,
+                "explanation": "NTB/T3 with DSCR between 125%-135%: underwriter review required (secured)."
+            }
+            logger.info(f"NTB Evaluation (T3, secured, DSCR 1.25-1.35): {decision}")
+            return decision
 
-def evaluate_su_risk(risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    # Fallback decision if none of the conditions are met
+    decision = {
+        "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+        "confidence": 0.99,
+        "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."
+    }
+    logger.info(f"NTB Evaluation fallback: {decision}")
+    return decision
+
+# --------------------------------------------------
+# SU Evaluations
+# --------------------------------------------------
+def evaluate_SU_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
+    """
+    Evaluate the loan eligibility for a Startup (SU) SME based on risk profile, DSCR, 
+    loan amount, and loan type.
+
+    Parameters:
+        sme_profile (str): The SME profile (must be "SU" for this function).
+        risk_profile (str): The risk tier (e.g., "T1", "T2", or "T3").
+        dscr (float): The Debt Service Coverage Ratio.
+        loan_amount (float): The requested loan amount.
+        loan_type (str): The type of loan ("unsecured" or "secured").
+
+    Returns:
+        dict: A dictionary with keys "decision", "confidence", and "explanation".
+              The decision is one of the values from the DECISIONS dictionary.
+
+    The function applies different thresholds based on:
+      - The risk tier (T1, T2, or T3)
+      - DSCR ranges specific to Startup (SU) requirements
+      - Hardcoded loan amount limits for unsecured and secured loans defined for SU
+
+    If none of the conditions are met, the function returns a fallback decision.
+    """
+    # Safeguard: ensure that only SU profiles are processed here.
+    if sme_profile != "SU":
+        error_msg = f"evaluate_SU_risk can only evaluate SU profiles. Received: {sme_profile}"
+        logger.error(error_msg)
+        raise EvaluationError(error_msg)
+        
+    base_conf = SME_PROFILES["SU"]["confidence"]
+    min_unsecured = SME_PROFILES["SU"]["loan_unsecured"]["min"]
+    max_unsecured = SME_PROFILES["SU"]["loan_unsecured"]["max"]
+    min_secured = SME_PROFILES["SU"]["loan_secured"]["min"]
+    max_secured = SME_PROFILES["SU"]["loan_secured"]["max"]
+    
+    # Risk Tier T1 with DSCR > 1.349
     if risk_profile == "T1" and dscr > 1.349:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "PASS", "confidence": 0.78, "explanation": "SU/T1 with DSCR >135% qualifies for an unsecured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.78,
+                "explanation": "SU/T1 with DSCR >135% qualifies for an unsecured loan."
+            }
+            logger.info(f"SU Evaluation (T1, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "PASS", "confidence": 0.82, "explanation": "SU/T1 with DSCR >135% qualifies for a secured loan."}
+            decision = {
+                "decision": DECISIONS["PASS"]["value"],
+                "confidence": 0.82,
+                "explanation": "SU/T1 with DSCR >135% qualifies for a secured loan."
+            }
+            logger.info(f"SU Evaluation (T1, secured): {decision}")
+            return decision
+
+    # Risk Tier T2 with DSCR > 1.35
     if risk_profile == "T2" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FLAG/AI", "confidence": 0.72, "explanation": "SU/T2 with DSCR >135%: AI review required (unsecured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.72,
+                "explanation": "SU/T2 with DSCR >135%: AI review required (unsecured)."
+            }
+            logger.info(f"SU Evaluation (T2, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "FLAG/AI", "confidence": 0.75, "explanation": "SU/T2 with DSCR >135%: AI review required (secured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.75,
+                "explanation": "SU/T2 with DSCR >135%: AI review required (secured)."
+            }
+            logger.info(f"SU Evaluation (T2, secured): {decision}")
+            return decision
+
+    # Risk Tier T3 with DSCR > 1.35
     if risk_profile == "T3" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FLAG/UW", "confidence": 0.70, "explanation": "SU/T3 with DSCR >135%: underwriter review required (unsecured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_UW"]["value"],
+                "confidence": 0.70,
+                "explanation": "SU/T3 with DSCR >135%: underwriter review required (unsecured)."
+            }
+            logger.info(f"SU Evaluation (T3, unsecured): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "FLAG/UW", "confidence": 0.73, "explanation": "SU/T3 with DSCR >135%: underwriter review required (secured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_UW"]["value"],
+                "confidence": 0.73,
+                "explanation": "SU/T3 with DSCR >135%: underwriter review required (secured)."
+            }
+            logger.info(f"SU Evaluation (T3, secured): {decision}")
+            return decision
+
+    # Risk Tier T1 with DSCR between 1.25 and 1.35
     if risk_profile == "T1" and 1.25 < dscr <= 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FLAG/AI", "confidence": 0.70, "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (unsecured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.70,
+                "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (unsecured)."
+            }
+            logger.info(f"SU Evaluation (T1, unsecured, DSCR 1.25-1.35): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "FLAG/AI", "confidence": 0.73, "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (secured)."}
+            decision = {
+                "decision": DECISIONS["FLAG_AI"]["value"],
+                "confidence": 0.73,
+                "explanation": "SU/T1 with DSCR between 125%-135%: AI review required (secured)."
+            }
+            logger.info(f"SU Evaluation (T1, secured, DSCR 1.25-1.35): {decision}")
+            return decision
+
+    # Risk Tier T2 with DSCR < 1.35
     if risk_profile == "T2" and dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
-            return {"decision": "FAIL", "confidence": 0.99, "explanation": "SU/T2 with DSCR <135% (unsecured): Loan declined."}
+            decision = {
+                "decision": DECISIONS["FAIL"]["value"],
+                "confidence": 0.99,
+                "explanation": "SU/T2 with DSCR <135% (unsecured): Loan declined."
+            }
+            logger.info(f"SU Evaluation (T2, unsecured, DSCR <1.35): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "FAIL", "confidence": 0.99, "explanation": "SU/T2 with DSCR <135% (secured): Loan declined."}
+            decision = {
+                "decision": DECISIONS["FAIL"]["value"],
+                "confidence": 0.99,
+                "explanation": "SU/T2 with DSCR <135% (secured): Loan declined."
+            }
+            logger.info(f"SU Evaluation (T2, secured, DSCR <1.35): {decision}")
+            return decision
+
+    # Risk Tier T3 with DSCR < 1.35
     if risk_profile == "T3" and dscr < 1.35:
         if loan_type == "unsecured" and loan_amount <= 26000:
-            return {"decision": "FAIL", "confidence": 0.99, "explanation": "SU/T3 with DSCR <135% (unsecured): Loan declined."}
+            decision = {
+                "decision": DECISIONS["FAIL"]["value"],
+                "confidence": 0.99,
+                "explanation": "SU/T3 with DSCR <135% (unsecured): Loan declined."
+            }
+            logger.info(f"SU Evaluation (T3, unsecured, DSCR <1.35): {decision}")
+            return decision
         if loan_type == "secured" and loan_amount <= 80000:
-            return {"decision": "FAIL", "confidence": 0.99, "explanation": "SU/T3 with DSCR <135% (secured): Loan declined."}
-    return {"decision": "REQUIREMENT", "confidence": 0.99, "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."}
+            decision = {
+                "decision": DECISIONS["FAIL"]["value"],
+                "confidence": 0.99,
+                "explanation": "SU/T3 with DSCR <135% (secured): Loan declined."
+            }
+            logger.info(f"SU Evaluation (T3, secured, DSCR <1.35): {decision}")
+            return decision
+
+    # Fallback decision
+    decision = {
+        "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+        "confidence": 0.99,
+        "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."
+    }
+    logger.info(f"SU Evaluation fallback: {decision}")
+    return decision
 
 def evaluate_sme_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str,
                       provided_pg: float, min_pg_required: float, requires_debenture: bool, has_debenture: bool,
@@ -312,36 +846,80 @@ def evaluate_sme_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
     # Global Checks
     global_result = global_sme_checks(dscr, loan_amount)
     if global_result:
+        logger.info(f"Global SME check failed: {global_result}")
         return global_result
 
-    # Conditional approvals for additional requirements:
+    # Conditional passes for additional requirements:
     if sme_profile in ["SU", "NTB", "ESB"] and provided_pg < min_pg_required:
-        return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
-                "explanation": f"Loan approved on condition that a minimum {int(min_pg_required*100)}% Personal Guarantee (PG) is signed before funding."}
-    if sme_profile in ["NTB", "ESB", "EB"] and requires_debenture and not has_debenture:
-        return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
-                "explanation": "Loan approved on condition that a Debenture is signed before funding."}
-    if loan_type == "secured" and not has_legal_charge:
-        return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
-                "explanation": "Loan approved on condition that the lender obtains a Legal Charge (First or Second) over the security before funding."}
-    if not is_due_diligence_complete:
-        return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
-                "explanation": "Loan approved on condition that all AML/KYC and Due Diligence checks are successfully completed before funding."}
-    if not is_business_registered:
-        return {"decision": "CONDITIONAL APPROVAL", "confidence": 0.99,
-                "explanation": "Loan approved on condition that borrower provides proof of business registration before funding."}
+        decision = {
+            "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+            "confidence": 0.99,
+            "explanation": f"Loan approved on condition that a minimum {int(min_pg_required * 100)}% Personal Guarantee (PG) is signed before funding."
+        }
+        logger.info(f"Conditional PG check triggered: {decision}")
+        return decision
 
-    # Proceed to profile-specific evaluation:
+    if sme_profile in ["NTB", "ESB", "EB"] and requires_debenture and not has_debenture:
+        decision = {
+            "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+            "confidence": 0.99,
+            "explanation": "Loan approved on condition that a Debenture is signed before funding."
+        }
+        logger.info(f"Debenture requirement check triggered: {decision}")
+        return decision
+
+    if loan_type == "secured" and not has_legal_charge:
+        decision = {
+            "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+            "confidence": 0.99,
+            "explanation": "Loan approved on condition that the lender obtains a Legal Charge (First or Second) over the security before funding."
+        }
+        logger.info(f"Legal charge check triggered: {decision}")
+        return decision
+
+    if not is_due_diligence_complete:
+        decision = {
+            "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+            "confidence": 0.99,
+            "explanation": "Loan approved on condition that all AML/KYC and Due Diligence checks are successfully completed before funding."
+        }
+        logger.info(f"Due diligence check triggered: {decision}")
+        return decision
+
+    if not is_business_registered:
+        decision = {
+            "decision": DECISIONS["CONDITIONAL_PASS"]["value"],
+            "confidence": 0.99,
+            "explanation": "Loan approved on condition that borrower provides proof of business registration before funding."
+        }
+        logger.info(f"Business registration check triggered: {decision}")
+        return decision
+
+    # Dispatch to profile-specific evaluation:
     if sme_profile == "EB":
-        return evaluate_eb_risk(risk_profile, dscr, loan_amount, loan_type)
+        decision = evaluate_eb_risk(sme_profile, risk_profile, dscr, loan_amount, loan_type)
+        logger.info(f"EB evaluation returned: {decision}")
+        return decision
     elif sme_profile == "ESB":
-        return evaluate_esb_risk(risk_profile, dscr, loan_amount, loan_type)
+        decision = evaluate_esb_risk(sme_profile, risk_profile, dscr, loan_amount, loan_type)
+        logger.info(f"ESB evaluation returned: {decision}")
+        return decision
     elif sme_profile == "NTB":
-        return evaluate_ntb_risk(risk_profile, dscr, loan_amount, loan_type)
+        decision = evaluate_ntb_risk(sme_profile, risk_profile, dscr, loan_amount, loan_type)
+        logger.info(f"NTB evaluation returned: {decision}")
+        return decision
     elif sme_profile == "SU":
-        return evaluate_su_risk(risk_profile, dscr, loan_amount, loan_type)
+        decision = evaluate_SU_risk(sme_profile, risk_profile, dscr, loan_amount, loan_type)
+        logger.info(f"SU evaluation returned: {decision}")
+        return decision
     else:
-        return {"decision": "FAIL", "confidence": 0.99, "explanation": "Invalid SME profile."}
+        decision = {
+            "decision": DECISIONS["FAIL"]["value"],
+            "confidence": 0.99,
+            "explanation": "Invalid SME profile."
+        }
+        logger.error(f"Invalid SME profile provided: {sme_profile}")
+        return decision
 
 # --------------------------------------------------
 # FastAPI App & Endpoints Setup
@@ -381,7 +959,16 @@ async def evaluate_borrower_type_endpoint(request: BorrowerTypeRequest):
 
 @app.post("/evaluate/borrower-id")
 async def evaluate_borrower_id_endpoint(request: BorrowerIDVerificationRequest):
-    return evaluate_borrower_id_verification(request.is_verified)
+    try:
+        result = evaluate_borrower_id_verification(request.is_verified)
+        logger.info(f"Borrower ID Evaluation result: {result}")
+        return result
+    except EvaluationError as e:
+        logger.error(f"Evaluation error in borrower ID verification: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Unexpected error during borrower ID evaluation")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/evaluate/open-banking")
 async def evaluate_open_banking_endpoint(request: OpenBankingRequest):
