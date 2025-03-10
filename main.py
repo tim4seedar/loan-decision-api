@@ -2,6 +2,19 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Literal
 import uvicorn
+from typing import Dict, List
+
+class UnderwriterInstructions(BaseModel):
+    role: str
+    objective: str
+    prompt_guidelines: List[str]
+    output_structure: Dict[str, str]
+
+class UnderwriterSchemaModel(BaseModel):
+    version: str
+    instructions: UnderwriterInstructions
+    data_sources: Dict[str, str]
+    fallback: str
 
 # ---------------------- CONFIGURATION ----------------------
 CONFIG = {"loan_adjustment_factor": 0.10}
@@ -509,7 +522,7 @@ async def evaluate_sme_risk_endpoint(request: SMERiskRequest):
         loan_amount=request.loan_amount,
         loan_type=request.loan_type
     )
-@app.get("/underwriter-schema")
+@app.get("/underwriter-schema", response_model=UnderwriterSchemaModel)
 async def underwriter_schema_endpoint():
     return get_underwriter_schema()
 
