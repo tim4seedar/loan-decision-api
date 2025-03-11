@@ -1,0 +1,16 @@
+# Ignore environment files
+openai_key.env
+passwords.txt
+
+# Ignore compiled Python files
+__pycache__/
+*.pyc
+
+# Ignore BFG jar and other build artifacts
+bfg-1.15.0.jar
+
+# Optionally ignore other files you don't want pushed
+config.py
+fallback_main.py
+loan-decision-api.git/
+Suggestions.txt
