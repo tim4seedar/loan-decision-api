@@ -8,6 +8,7 @@ from evaluation_module import (
     evaluate_open_banking,
     evaluate_sme_risk,
     get_underwriter_schema,
+    UnderwriterSchemaModel,
     EvaluationError
 )
 from typing import Dict, List
