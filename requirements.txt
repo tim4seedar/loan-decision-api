@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 fastapi
 uvicorn
 pydantic
 openai
 python-dotenv==1.0.1
+=======
+(Remote version changes here)
+>>>>>>> origin/main
