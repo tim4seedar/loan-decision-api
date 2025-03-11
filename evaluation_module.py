@@ -72,9 +72,11 @@ UNDERWRITER_SCHEMA = {
         ),
         "prompt_guidelines": [
             "Begin with a 'Decisioning Summary' that states the final decision (PASS, FLAG/AI, FLAG/UW, FAIL, or CONDITIONAL_PASS) and the overall confidence rating.",
-            "Include a 'Business Logic Explanation' section detailing all key rules, risk adjustments, and calculations applied. Reference specific rule IDs and thresholds where applicable.",
-            "Provide an 'Input Scenario Analysis' section summarizing the complete input data, including SME profile, risk profile, DSCR, loan amount, loan type, borrower type, credit checks, and verification statuses.",
-            "Enumerate any triggered deterministic rules along with detailed explanations of their impact on the decision.",
+            "Include a 'Business Logic Explanation' section detailing all key rules, risk adjustments, and calculations applied. Do not imply that a DSCR of 1.5x is strictly required; rather note that while a DSCR of 1.5x is ideal, any DSCR above 1.25x is considered acceptable, with borderline cases (e.g. DSCR around 1.35x) warranting additional review.",
+            "Provide an 'Input Scenario Analysis' section summarizing the complete input data, including SME profile, risk profile, stressed DSCR, loan amount, loan type, borrower type, credit checks, and verification statuses.",
+            "Enumerate any triggered deterministic rules along with detailed explanations of how they impacted the decision.",
+            "For secured loans, explicitly include an analysis of collateral details. This should cover: verifying that the property is of an acceptable type; checking that a recent valuation report is available and has been analyzed; determining whether any legal charges already exist on the property; assessing the feasibility of obtaining a second charge if necessary; confirming that the property value is sufficient to service the loan; and calculating the Loan-to-Value (LTV) ratio to ensure it falls within Seedar's exposure appetite.",
+            "If any collateral details (such as property type, valuation report, existing legal charges, feasibility of a second charge, or LTV ratio) are not provided or are incomplete, explicitly note the missing information and request that the applicant supply the necessary documentation for a full evaluation.",
             "Include 'Risk Mitigation Recommendations' outlining any additional security measures or manual review requirements for borderline cases.",
             "Add an 'Audit Information' section that records the rule version, evaluation timestamp, and a log of the decision-making process.",
             "Include 'Compliance Notes' that describe adherence to regulatory guidelines and internal lending policies, along with any documented exceptions."
@@ -94,9 +96,10 @@ UNDERWRITER_SCHEMA = {
     "external_data": "Includes verifications from external sources such as credit bureaus, open banking data, financial statements, and borrower identity checks."
 },
     "fallback": (
-        "If any required data from the input scenario is missing, ambiguous, or fails verification, default to flagging the application for manual review. "
-        "Clearly note which data points were insufficient and recommend obtaining additional information."
-    ),
+    "If any required data from the input scenario is missing, ambiguous, or fails verification, the system should return a CONDITIONAL_PASS decision. "
+    "In these cases, the underwriter must explicitly document which data points are incomplete or uncertain, and clearly outline the conditions that must be met—such as sufficient Personal Guarantees, debentures, and completed AML/KYC checks—for final approval. "
+    "This approach ensures that while the application passes automated checks conditionally, final approval is contingent upon fulfilling these specific security and verification requirements, rather than necessitating a full manual review."
+),
     "audit_and_versioning": {
         "rule_version": "3.0",
         "timestamp": "To be recorded at evaluation time",
