@@ -3,6 +3,10 @@ import logging
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Dict, List
+from gpt_client import call_gpt
+
+# Use call_gpt(...) wherever you need GPT
+
 
 # --------------------------------------------------
 # DECISIONS Definitions
@@ -892,3 +896,36 @@ def evaluate_sme_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
         }
         logger.error(f"Invalid SME profile provided: {sme_profile}")
         return decision
+# --------------------------------------------------
+# Underwriter Helper Function
+# --------------------------------------------------
+def generate_underwriter_narrative(evaluation_decision: dict) -> str:
+    """
+    Generate a narrative explanation for an evaluation decision.
+    
+    This function builds a prompt by embedding the evaluation decision details
+    into the underwriter schema and then calls the GPT engine to generate the narrative.
+    """
+    # Retrieve the underwriter schema from the module (ensure get_underwriter_schema is defined above)
+    schema = get_underwriter_schema()
+
+    # Build the prompt using the evaluation decision
+    prompt = f"""
+You are {schema['instructions']['role']}.
+Objective: {schema['instructions']['objective']}
+
+Evaluation Decision:
+  - Decision: {evaluation_decision['decision']}
+  - Confidence: {evaluation_decision['confidence']}
+  - Explanation: {evaluation_decision['explanation']}
+
+Based on the above, generate a detailed narrative explanation that:
+  • Starts with a Decisioning Summary.
+  • Details the business logic and key rules that led to this outcome (referencing rule IDs if applicable).
+  • Summarizes the relevant input scenario.
+  
+Do not add any interpretations beyond what is provided in the evaluation decision.
+    """
+    # Replace 'call_gpt' with your actual GPT call function or API integration.
+    narrative = call_gpt(prompt) # GPT API Call
+    return narrative

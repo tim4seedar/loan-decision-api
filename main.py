@@ -1,25 +1,30 @@
 import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-from typing import Dict, List
-from datetime import datetime
-import uvicorn
-import logging
-
 from evaluation_module import (
+    generate_underwriter_narrative,
     evaluate_borrower_type,
     evaluate_borrower_id_verification,
     evaluate_open_banking,
     evaluate_sme_risk,
     get_underwriter_schema,
-    UnderwriterSchemaModel,
-    EvaluationError,
-    logger
+    EvaluationError
 )
+from typing import Dict, List
+from datetime import datetime
+import uvicorn
+import logging
+
+# Define a Pydantic model for the evaluation decision
+class EvaluationDecision(BaseModel):
+    decision: str
+    confidence: float
+    explanation: str
 
 # --------------------------------------------------
 # Environment Detection
 # --------------------------------------------------
+# Check if running in a staging environment. In staging, auto-approval will bypass manual approval.
 IS_STAGING = os.getenv("STAGING", "False").lower() == "true"
 
 # --------------------------------------------------
@@ -103,6 +108,15 @@ async def underwriter_schema_endpoint():
             "message": "The requested action requires approval",
             "action_id": "g-bebaea08fb7964507a70a86a705414e10fbe0f9b"
         }
-
+@app.post("/generate-narrative")
+async def generate_narrative_endpoint(evaluation: EvaluationDecision):
+    try:
+        narrative = generate_underwriter_narrative(evaluation.dict())
+        return {"narrative": narrative}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+# --------------------------------------------------
+# Run the Application
+# --------------------------------------------------
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
