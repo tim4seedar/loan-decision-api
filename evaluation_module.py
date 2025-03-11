@@ -234,33 +234,44 @@ def global_sme_checks(dscr: float, loan_amount: float) -> dict:
 # --------------------------------------------------
 def evaluate_eb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     """
-    Evaluate the loan eligibility for an Established Business (EB) SME based on risk profile, DSCR, 
-    loan amount, and loan type.
-    ...
+    Evaluate the loan eligibility for an Established Business (EB) SME.
+    This version enforces all hardcoded numeric limits (minimum and maximum borrowing limits)
+    before processing DSCR and risk profile conditions.
     """
     if sme_profile != "EB":
         error_msg = f"evaluate_eb_risk can only evaluate EB profiles. Received: {sme_profile}"
         logger.error(error_msg)
         raise EvaluationError(error_msg)
-        
-    base_conf = SME_PROFILES["EB"]["confidence"]
-    min_unsecured = SME_PROFILES["EB"]["loan_unsecured"]["min"]
-    max_unsecured = SME_PROFILES["EB"]["loan_unsecured"]["max"]
-    min_secured = SME_PROFILES["EB"]["loan_secured"]["min"]
-    max_secured = SME_PROFILES["EB"]["loan_secured"]["max"]
-    
-    if risk_profile == "T1" and dscr >= 1.50:
-        if loan_type == "unsecured" and loan_amount <= 150000:
-            decision = {"decision": "PASS", "confidence": 0.90,
-                        "explanation": "EB/T1 with DSCR >150% qualifies for an unsecured loan."}
-            logger.info(f"EB Evaluation (T1, unsecured): {decision}")
-            return decision
-        if loan_type == "secured" and loan_amount <= 250000:
-            decision = {"decision": "PASS", "confidence": 0.92,
-                        "explanation": "EB/T1 with DSCR >150% qualifies for a secured loan."}
-            logger.info(f"EB Evaluation (T1, secured): {decision}")
-            return decision
 
+    # Enforce hardcoded borrowing limits for EB
+    if loan_type.lower() == "secured":
+        min_limit = SME_PROFILES["EB"]["loan_secured"]["min"]
+        max_limit = SME_PROFILES["EB"]["loan_secured"]["max"]
+    else:
+        min_limit = SME_PROFILES["EB"]["loan_unsecured"]["min"]
+        max_limit = SME_PROFILES["EB"]["loan_unsecured"]["max"]
+
+    # Check against the minimum allowed loan amount
+    if loan_amount < min_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} is below the minimum allowed limit of £{min_limit} for EB {loan_type} loans."
+        }
+        logger.info(f"EB Evaluation hard stop (min limit): {decision}")
+        return decision
+
+    # Check against the maximum allowed loan amount
+    if loan_amount > max_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} exceeds the maximum allowed limit of £{max_limit} for EB {loan_type} loans."
+        }
+        logger.info(f"EB Evaluation hard stop (max limit): {decision}")
+        return decision
+
+    base_conf = SME_PROFILES["EB"]["confidence"]
     if risk_profile == "T2" and dscr >= 1.50:
         if loan_type == "unsecured" and loan_amount <= 150000:
             decision = {"decision": "PASS", "confidence": 0.87,
@@ -356,9 +367,15 @@ def evaluate_eb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amou
                 logger.info(f"EB Evaluation (T3, 1.25<DSCR<=1.35, secured): {decision}")
                 return decision
 
-    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99,
-                "explanation": "Debenture and a minimum of 20% personal guarantee (PG) required."}
-    logger.info(f"EB Evaluation fallback: {decision}")
+    # Comprehensive fallback: Flag for underwriter review
+    fallback_explanation = (
+        "Although the loan amount is within the permitted borrowing limits, "
+        "the applicant’s DSCR and risk metrics do not satisfy the thresholds for an automatic PASS. "
+        "Therefore, the application is flagged for underwriter review (FLAG/UW) for further evaluation, "
+        "including a detailed review of additional qualitative factors."
+    )
+    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    logger.info(f"EB Evaluation comprehensive fallback: {decision}")
     return decision
 
 # --------------------------------------------------
@@ -366,21 +383,46 @@ def evaluate_eb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amou
 # --------------------------------------------------
 def evaluate_esb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     """
-    Evaluate the loan eligibility for an Early-Stage Business (ESB) SME based on risk profile, DSCR, 
-    loan amount, and loan type.
-    ...
+    Evaluate the loan eligibility for an Early-Stage Business (ESB) SME.
+    This version enforces all hardcoded numeric limits (minimum and maximum borrowing limits)
+    before processing DSCR and risk profile conditions.
     """
     if sme_profile != "ESB":
         error_msg = f"evaluate_esb_risk can only evaluate ESB profiles. Received: {sme_profile}"
         logger.error(error_msg)
         raise EvaluationError(error_msg)
-    
+
+    # Enforce hardcoded borrowing limits from the SME_PROFILES configuration.
+    # Both minimum and maximum limits must be met.
+    if loan_type.lower() == "secured":
+        min_limit = SME_PROFILES["ESB"]["loan_secured"]["min"]
+        max_limit = SME_PROFILES["ESB"]["loan_secured"]["max"]
+    else:
+        min_limit = SME_PROFILES["ESB"]["loan_unsecured"]["min"]
+        max_limit = SME_PROFILES["ESB"]["loan_unsecured"]["max"]
+
+    # Check against the minimum allowed loan amount
+    if loan_amount < min_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": (f"Loan amount £{loan_amount} is below the minimum allowed limit of £{min_limit} "
+                            f"for ESB {loan_type} loans.")
+        }
+        logger.info(f"ESB Evaluation hard stop (min limit): {decision}")
+        return decision
+
+    # Check against the maximum allowed loan amount
+    if loan_amount > max_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": (f"Loan amount £{loan_amount} exceeds the maximum allowed limit of £{max_limit} "
+                            f"for ESB {loan_type} loans.")
+        }
+        logger.info(f"ESB Evaluation hard stop (max limit): {decision}")
+        return decision
     base_conf = SME_PROFILES["ESB"]["confidence"]
-    min_unsecured = SME_PROFILES["ESB"]["loan_unsecured"]["min"]
-    max_unsecured = SME_PROFILES["ESB"]["loan_unsecured"]["max"]
-    min_secured = SME_PROFILES["ESB"]["loan_secured"]["min"]
-    max_secured = SME_PROFILES["ESB"]["loan_secured"]["max"]
-    
     if risk_profile == "T1" and dscr > 1.50:
         if loan_type == "unsecured" and loan_amount <= 80000:
             decision = {"decision": "PASS", "confidence": 0.88,
@@ -489,9 +531,13 @@ def evaluate_esb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
             logger.info(f"ESB Evaluation (T3, 1.25<DSCR<1.35, secured): {decision}")
             return decision
 
-    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99,
-                "explanation": "Debenture and a minimum of 25% personal guarantee (PG) required."}
-    logger.info(f"ESB Evaluation fallback: {decision}")
+    # Comprehensive fallback: Flag for underwriter review
+    fallback_explanation = (
+        "Although the loan amount complies with the defined borrowing limits, the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "Therefore, the application is flagged for underwriter review (FLAG/UW) to allow further analysis, including a review of qualitative factors and additional financial details."
+    )
+    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    logger.info(f"SU Evaluation comprehensive fallback: {decision}")
     return decision
 
 # --------------------------------------------------
@@ -499,21 +545,44 @@ def evaluate_esb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
 # --------------------------------------------------
 def evaluate_ntb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     """
-    Evaluate the loan eligibility for a Newly Trading Business (NTB) SME based on risk profile, DSCR, 
-    loan amount, and loan type.
-    ...
+    Evaluate the loan eligibility for a Newly Trading Business (NTB) SME.
+    This version enforces all hardcoded numeric limits (minimum and maximum borrowing limits)
+    before processing DSCR and risk profile conditions.
     """
     if sme_profile != "NTB":
         error_msg = f"evaluate_ntb_risk can only evaluate NTB profiles. Received: {sme_profile}"
         logger.error(error_msg)
         raise EvaluationError(error_msg)
-        
-    base_conf = SME_PROFILES["NTB"]["confidence"]
-    min_unsecured = SME_PROFILES["NTB"]["loan_unsecured"]["min"]
-    max_unsecured = SME_PROFILES["NTB"]["loan_unsecured"]["max"]
-    min_secured = SME_PROFILES["NTB"]["loan_secured"]["min"]
-    max_secured = SME_PROFILES["NTB"]["loan_secured"]["max"]
-    
+
+    # Enforce hardcoded borrowing limits for NTB
+    if loan_type.lower() == "secured":
+        min_limit = SME_PROFILES["NTB"]["loan_secured"]["min"]
+        max_limit = SME_PROFILES["NTB"]["loan_secured"]["max"]
+    else:
+        min_limit = SME_PROFILES["NTB"]["loan_unsecured"]["min"]
+        max_limit = SME_PROFILES["NTB"]["loan_unsecured"]["max"]
+
+    # Check against the minimum allowed loan amount
+    if loan_amount < min_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} is below the minimum allowed limit of £{min_limit} for NTB {loan_type} loans."
+        }
+        logger.info(f"NTB Evaluation hard stop (min limit): {decision}")
+        return decision
+
+    # Check against the maximum allowed loan amount
+    if loan_amount > max_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} exceeds the maximum allowed limit of £{max_limit} for NTB {loan_type} loans."
+        }
+        logger.info(f"NTB Evaluation hard stop (max limit): {decision}")
+        return decision
+
+    base_conf = SME_PROFILES["NTB"]["confidence"]    
     if risk_profile == "T1" and dscr > 1.25:
         if loan_type == "unsecured" and loan_amount <= 60000:
             decision = {
@@ -586,12 +655,14 @@ def evaluate_ntb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
             logger.info(f"NTB Evaluation (T3, secured, DSCR 1.25-1.35): {decision}")
             return decision
 
-    decision = {
-        "decision": "CONDITIONAL_PASS",
-        "confidence": 0.99,
-        "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."
-    }
-    logger.info(f"NTB Evaluation fallback: {decision}")
+    # Comprehensive fallback: Flag for underwriter review
+    fallback_explanation = (
+        "While the loan amount is within the allowed range, the DSCR and overall risk evaluation do not meet the criteria for an automatic PASS. "
+        "Therefore, the application is flagged for underwriter review (FLAG/UW) so that a human underwriter can perform additional analysis "
+        "and consider any qualitative factors before final approval."
+    )
+    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    logger.info(f"NTB Evaluation comprehensive fallback: {decision}")
     return decision
 
 # --------------------------------------------------
@@ -599,39 +670,44 @@ def evaluate_ntb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
 # --------------------------------------------------
 def evaluate_SU_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str) -> dict:
     """
-    Evaluate the loan eligibility for a Startup (SU) SME based on risk profile, DSCR, 
-    loan amount, and loan type.
-    ...
+    Evaluate the loan eligibility for a Startup (SU) SME.
+    This version enforces all hardcoded numeric limits (minimum and maximum borrowing limits)
+    before processing DSCR and risk profile conditions.
     """
     if sme_profile != "SU":
         error_msg = f"evaluate_SU_risk can only evaluate SU profiles. Received: {sme_profile}"
         logger.error(error_msg)
         raise EvaluationError(error_msg)
-        
-    base_conf = SME_PROFILES["SU"]["confidence"]
-    min_unsecured = SME_PROFILES["SU"]["loan_unsecured"]["min"]
-    max_unsecured = SME_PROFILES["SU"]["loan_unsecured"]["max"]
-    min_secured = SME_PROFILES["SU"]["loan_secured"]["min"]
-    max_secured = SME_PROFILES["SU"]["loan_secured"]["max"]
-    
-    if risk_profile == "T1" and dscr > 1.349:
-        if loan_type == "unsecured" and loan_amount <= 40000:
-            decision = {
-                "decision": "PASS",
-                "confidence": 0.78,
-                "explanation": "SU/T1 with DSCR >135% qualifies for an unsecured loan."
-            }
-            logger.info(f"SU Evaluation (T1, unsecured): {decision}")
-            return decision
-        if loan_type == "secured" and loan_amount <= 80000:
-            decision = {
-                "decision": "PASS",
-                "confidence": 0.82,
-                "explanation": "SU/T1 with DSCR >135% qualifies for a secured loan."
-            }
-            logger.info(f"SU Evaluation (T1, secured): {decision}")
-            return decision
 
+    # Enforce hardcoded borrowing limits for SU
+    if loan_type.lower() == "secured":
+        min_limit = SME_PROFILES["SU"]["loan_secured"]["min"]
+        max_limit = SME_PROFILES["SU"]["loan_secured"]["max"]
+    else:
+        min_limit = SME_PROFILES["SU"]["loan_unsecured"]["min"]
+        max_limit = SME_PROFILES["SU"]["loan_unsecured"]["max"]
+
+    # Check against the minimum allowed loan amount
+    if loan_amount < min_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} is below the minimum allowed limit of £{min_limit} for SU {loan_type} loans."
+        }
+        logger.info(f"SU Evaluation hard stop (min limit): {decision}")
+        return decision
+
+    # Check against the maximum allowed loan amount
+    if loan_amount > max_limit:
+        decision = {
+            "decision": "FAIL",
+            "confidence": 0.99,
+            "explanation": f"Loan amount £{loan_amount} exceeds the maximum allowed limit of £{max_limit} for SU {loan_type} loans."
+        }
+        logger.info(f"SU Evaluation hard stop (max limit): {decision}")
+        return decision
+
+    base_conf = SME_PROFILES["SU"]["confidence"]
     if risk_profile == "T2" and dscr > 1.35:
         if loan_type == "unsecured" and loan_amount <= 40000:
             decision = {
@@ -722,12 +798,13 @@ def evaluate_SU_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amou
             logger.info(f"SU Evaluation (T3, secured, DSCR <1.35): {decision}")
             return decision
 
-    decision = {
-        "decision": "CONDITIONAL_PASS",
-        "confidence": 0.99,
-        "explanation": "Debenture and a minimum of 50% personal guarantee (PG) required."
-    }
-    logger.info(f"SU Evaluation fallback: {decision}")
+    # Comprehensive fallback: Flag for underwriter review
+    fallback_explanation = (
+        "Although the loan amount complies with the defined borrowing limits, the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "Therefore, the application is flagged for underwriter review (FLAG/UW) to allow further analysis, including a review of qualitative factors and additional financial details."
+    )
+    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    logger.info(f"SU Evaluation comprehensive fallback: {decision}")
     return decision
 
 def evaluate_sme_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amount: float, loan_type: str,
