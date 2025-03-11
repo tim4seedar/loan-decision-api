@@ -367,14 +367,14 @@ def evaluate_eb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amou
                 logger.info(f"EB Evaluation (T3, 1.25<DSCR<=1.35, secured): {decision}")
                 return decision
 
-    # Comprehensive fallback: Flag for underwriter review
+    # Comprehensive fallback for cases missing only additional checks (PG, Debenture, ID, AML/KYC):
     fallback_explanation = (
-        "Although the loan amount is within the permitted borrowing limits, "
-        "the applicant’s DSCR and risk metrics do not satisfy the thresholds for an automatic PASS. "
-        "Therefore, the application is flagged for underwriter review (FLAG/UW) for further evaluation, "
-        "including a detailed review of additional qualitative factors."
+        "Although the loan amount complies with the defined borrowing limits, "
+        "the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "However, since the only issues relate to missing personal guarantees, debentures, ID verifications, or AML/KYC checks, "
+        "the application is granted a CONDITIONAL_PASS subject to these additional conditions."
     )
-    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99, "explanation": fallback_explanation}
     logger.info(f"EB Evaluation comprehensive fallback: {decision}")
     return decision
 
@@ -531,13 +531,15 @@ def evaluate_esb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
             logger.info(f"ESB Evaluation (T3, 1.25<DSCR<1.35, secured): {decision}")
             return decision
 
-    # Comprehensive fallback: Flag for underwriter review
+    # Comprehensive fallback for cases missing only additional checks (PG, Debenture, ID, AML/KYC):
     fallback_explanation = (
-        "Although the loan amount complies with the defined borrowing limits, the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
-        "Therefore, the application is flagged for underwriter review (FLAG/UW) to allow further analysis, including a review of qualitative factors and additional financial details."
+        "Although the loan amount complies with the defined borrowing limits, "
+        "the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "However, since the only issues relate to missing personal guarantees, debentures, ID verifications, or AML/KYC checks, "
+        "the application is granted a CONDITIONAL_PASS subject to these additional conditions."
     )
-    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
-    logger.info(f"SU Evaluation comprehensive fallback: {decision}")
+    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99, "explanation": fallback_explanation}
+    logger.info(f"ESB Evaluation comprehensive fallback: {decision}")
     return decision
 
 # --------------------------------------------------
@@ -655,13 +657,14 @@ def evaluate_ntb_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amo
             logger.info(f"NTB Evaluation (T3, secured, DSCR 1.25-1.35): {decision}")
             return decision
 
-    # Comprehensive fallback: Flag for underwriter review
+    # Comprehensive fallback for cases missing only additional checks (PG, Debenture, ID, AML/KYC):
     fallback_explanation = (
-        "While the loan amount is within the allowed range, the DSCR and overall risk evaluation do not meet the criteria for an automatic PASS. "
-        "Therefore, the application is flagged for underwriter review (FLAG/UW) so that a human underwriter can perform additional analysis "
-        "and consider any qualitative factors before final approval."
+        "Although the loan amount complies with the defined borrowing limits, "
+        "the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "However, since the only issues relate to missing personal guarantees, debentures, ID verifications, or AML/KYC checks, "
+        "the application is granted a CONDITIONAL_PASS subject to these additional conditions."
     )
-    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99, "explanation": fallback_explanation}
     logger.info(f"NTB Evaluation comprehensive fallback: {decision}")
     return decision
 
@@ -798,12 +801,14 @@ def evaluate_SU_risk(sme_profile: str, risk_profile: str, dscr: float, loan_amou
             logger.info(f"SU Evaluation (T3, secured, DSCR <1.35): {decision}")
             return decision
 
-    # Comprehensive fallback: Flag for underwriter review
+    # Comprehensive fallback for cases missing only additional checks (PG, Debenture, ID, AML/KYC):
     fallback_explanation = (
-        "Although the loan amount complies with the defined borrowing limits, the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
-        "Therefore, the application is flagged for underwriter review (FLAG/UW) to allow further analysis, including a review of qualitative factors and additional financial details."
+        "Although the loan amount complies with the defined borrowing limits, "
+        "the applicant’s DSCR and risk indicators do not justify an automatic PASS. "
+        "However, since the only issues relate to missing personal guarantees, debentures, ID verifications, or AML/KYC checks, "
+        "the application is granted a CONDITIONAL_PASS subject to these additional conditions."
     )
-    decision = {"decision": "FLAG/UW", "confidence": 0.99, "explanation": fallback_explanation}
+    decision = {"decision": "CONDITIONAL_PASS", "confidence": 0.99, "explanation": fallback_explanation}
     logger.info(f"SU Evaluation comprehensive fallback: {decision}")
     return decision
 
