@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from evaluation_module import (
     generate_underwriter_narrative,
+    generate_and_verify_narrative,
+    check_underwriter_narrative,
     evaluate_borrower_type,
     evaluate_borrower_id_verification,
     evaluate_open_banking,
@@ -15,12 +17,6 @@ from typing import Dict, List
 from datetime import datetime
 import uvicorn
 import logging
-
-# Define a Pydantic model for the evaluation decision
-class EvaluationDecision(BaseModel):
-    decision: str
-    confidence: float
-    explanation: str
 
 # --------------------------------------------------
 # Environment Detection
@@ -36,6 +32,16 @@ app = FastAPI(
     description="API for evaluating loan eligibility based on risk profiles, borrower checks, and SME risk rules (Rules 1-70).",
     version="1.0"
 )
+
+# Define a Pydantic model for the evaluation decision
+class EvaluationDecision(BaseModel):
+    decision: str
+    confidence: float
+    explanation: str
+
+class NarrativeCheckRequest(BaseModel):
+    evaluation: EvaluationDecision
+    narrative: str
 
 class BorrowerTypeRequest(BaseModel):
     borrower_type: str
@@ -116,6 +122,23 @@ async def generate_narrative_endpoint(evaluation: EvaluationDecision):
         return {"narrative": narrative}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate-and-verify-narrative")
+async def generate_and_verify_narrative_endpoint(evaluation: EvaluationDecision):
+    try:
+        narrative = generate_and_verify_narrative(evaluation.dict())
+        return {"narrative": narrative}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/check-narrative")
+async def check_narrative_endpoint(request: NarrativeCheckRequest):
+    try:
+        result = check_underwriter_narrative(request.narrative, request.evaluation.dict())
+        return {"check_result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --------------------------------------------------
 # Run the Application
 # --------------------------------------------------

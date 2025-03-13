@@ -1,5 +1,6 @@
 import os
 import logging
+import copy
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Dict, List
@@ -86,14 +87,15 @@ UNDERWRITER_SCHEMA = {
             "Include 'Compliance Notes' that describe adherence to regulatory guidelines and internal lending policies, along with any documented exceptions."
         ],
         "output_structure": {
-            "decisioning_summary": "A concise overview of the final decision and the associated confidence rating.",
-            "business_logic_explanation": "A detailed breakdown of the applied business rules, risk adjustments, and calculations, including references to specific rule IDs.",
-            "input_scenario_analysis": "A summary of all provided input data used in the evaluation.",
-            "applied_rules": "A list of triggered deterministic rules with their IDs and detailed explanations of how they impacted the decision.",
-            "risk_recommendations": "Recommendations for mitigating risks, including additional security requirements or notes for manual review if the case is borderline.",
-            "audit_information": "Metadata including the rule version, evaluation timestamp, and an audit trail of all decisions made.",
-            "compliance_notes": "Notes confirming adherence to regulatory requirements and internal lending policies, along with any documented exceptions."
-        }
+    "decisioning_summary": "A concise overview of the final decision and the associated confidence rating.",
+    "decision_in_principle": "A preliminary decision template that outlines the conditions for full approval, including any contingencies.",
+    "business_logic_explanation": "A detailed breakdown of the applied business rules, risk adjustments, and calculations, including references to specific rule IDs.",
+    "input_scenario_analysis": "A summary of all provided input data used in the evaluation.",
+    "applied_rules": "A list of triggered deterministic rules with their IDs and detailed explanations of how they impacted the decision.",
+    "submission_checklist": "A checklist of the documents required from the borrower to progress the full application (e.g., Personal Guarantee, Debenture documentation, ID verification, AML/KYC records, collateral documentation, etc.).",
+    "risk_recommendations": "Recommendations for mitigating risks, including additional security measures or notes for manual review if the case is borderline.",
+    "audit_information": "Metadata including the rule version, evaluation timestamp, and an audit trail of all decisions made.",
+    "compliance_notes": "Notes confirming adherence to regulatory requirements and internal lending policies, along with any documented exceptions."
     },
    "data_sources": {
     "decisioning_gpt": "This process is self-referential; the same GPT that generates the decision is used to provide a detailed explanation of the applied business logic using the input scenario data.",
@@ -121,7 +123,7 @@ def get_underwriter_schema():
     output structure, data source references, fallback guidelines, and dynamic audit metadata.
     Updates the audit timestamp at runtime.
     """
-    schema = UNDERWRITER_SCHEMA.copy()
+    schema = copy.deepcopy(UNDERWRITER_SCHEMA)
     if "audit_and_versioning" in schema:
         schema["audit_and_versioning"]["timestamp"] = datetime.utcnow().isoformat() + "Z"
     return schema
@@ -184,7 +186,7 @@ SME_PROFILES = {
     }
 }
 # --------------------------------------------------
-# Configuration & Business Logic
+# Configuration
 # --------------------------------------------------
 CONFIG = {"loan_adjustment_factor": 0.10}
 
@@ -197,6 +199,9 @@ RISK_PROFILES = {
 RISK_CONFIDENCE_ADJUSTMENTS = {"T1": 0.10, "T2": 0.00, "T3": -0.15}
 DSCR_CONFIDENCE_ADJUSTMENTS = {"low": -0.15, "medium": 0.00, "high": 0.10}
 
+# --------------------------------------------------
+# Business Logic (i.e. Rules)
+# --------------------------------------------------
 def adjust_confidence(base_confidence: float, requested_loan: float, min_loan: float, max_loan: float,
                       risk_profile: str, dscr_level: str) -> float:
     factor = CONFIG["loan_adjustment_factor"]
@@ -906,13 +911,36 @@ def generate_underwriter_narrative(evaluation_decision: dict) -> str:
     This function builds a prompt by embedding the evaluation decision details
     into the underwriter schema and then calls the GPT engine to generate the narrative.
     """
-    # Retrieve the underwriter schema from the module (ensure get_underwriter_schema is defined above)
+    # Retrieve the underwriter schema from the module
     schema = get_underwriter_schema()
 
-    # Build the prompt using the evaluation decision
+    # Build the prompt using the evaluation decision with additional sections
     prompt = f"""
 You are {schema['instructions']['role']}.
 Objective: {schema['instructions']['objective']}
+
+Using the evaluation decision provided below, generate a detailed narrative explanation that includes the following sections:
+
+1. Decision in Principle:
+   - Provide a clear preliminary decision that outlines the final decision outcome (e.g., PASS, CONDITIONAL_PASS, FLAG/AI, FLAG/UW, FAIL) and details any conditions that must be met before full approval. Clearly articulate any contingencies or conditions that apply.
+
+2. Business Logic Explanation:
+   - Describe in detail the key business rules, risk adjustments, and numerical thresholds that influenced this decision. Reference specific rule IDs, risk metrics, and relevant thresholds where applicable.
+
+3. Input Scenario Analysis:
+   - Summarize the complete input data used in this evaluation, including the SME profile, risk profile, stressed DSCR, loan amount, loan type, and any borrower verification or credit check statuses.
+
+4. Submission Checklist:
+   - List all required documents and verifications that the broker/borrower must provide to progress the full application. This should include items such as Personal Guarantee documentation, Debenture or legal charge confirmation, ID verification, AML/KYC records, and collateral or property valuation details.
+
+5. Risk Mitigation Recommendations:
+   - Outline any additional measures or further reviews required (e.g., enhanced due diligence, additional security measures) particularly for borderline cases.
+
+6. Audit Information:
+   - Include metadata such as the rule version, the evaluation timestamp, and a brief audit trail summarizing the decision-making process.
+
+7. Compliance Notes:
+   - Confirm that the decision aligns with internal lending policies and external regulatory guidelines, noting any exceptions or additional requirements if applicable.
 
 Evaluation Decision:
   - Decision: {evaluation_decision['decision']}
@@ -924,8 +952,83 @@ Based on the above, generate a detailed narrative explanation that:
   • Details the business logic and key rules that led to this outcome (referencing rule IDs if applicable).
   • Summarizes the relevant input scenario.
   
-Do not add any interpretations beyond what is provided in the evaluation decision.
+Generate the narrative explanation using nuanced and professional language. Do not add any interpretations beyond what is provided in the evaluation decision.
     """
-    # Replace 'call_gpt' with your actual GPT call function or API integration.
-    narrative = call_gpt(prompt) # GPT API Call
+    try:
+        narrative = call_gpt(prompt)  # GPT API Call
+    except Exception as e:
+        logger.error(f"Error generating narrative: {e}")
+        raise EvaluationError(f"Failed to generate narrative due to GPT API error: {e}")
+    
+    return narrative
+
+# --------------------------------------------------
+# Check You Work Function
+# --------------------------------------------------
+def check_underwriter_narrative(narrative: str, evaluation_decision: dict) -> str:
+    """
+    Check the generated narrative for any inconsistencies or contradictions 
+    with the evaluation decision and underlying business logic.
+    
+    This function builds a prompt for GPT to review the narrative against the 
+    evaluation decision details. If no contradictions are found, it should return 
+    a message indicating "No contradictions found." Otherwise, it should list the discrepancies.
+    """
+    schema = get_underwriter_schema()
+    prompt = f"""
+Review the following evaluation decision details and the narrative explanation. 
+Your task is to ensure that the narrative does not contradict or conflict with the underlying business logic.
+    
+Evaluation Decision:
+  - Decision: {evaluation_decision['decision']}
+  - Confidence: {evaluation_decision['confidence']}
+  - Explanation: {evaluation_decision['explanation']}
+
+Narrative Explanation:
+{narrative}
+
+If the narrative is consistent with the evaluation decision and does not contain any contradictions with the business logic, reply with "No contradictions found." 
+If there are discrepancies, please list them clearly.
+    """
+    try:
+        check_result = call_gpt(prompt)  # Call the GPT API to perform the check
+    except Exception as e:
+        logger.error(f"Error checking narrative: {e}")
+        # You might choose to either raise an error or return a default response
+        raise EvaluationError(f"Failed to check narrative due to GPT API error: {e}")
+    
+    return check_result
+
+# --------------------------------------------------
+# Check You Work Function
+# --------------------------------------------------
+def generate_and_verify_narrative(evaluation_decision: dict) -> str:
+    """
+    Generate a narrative explanation for an evaluation decision and automatically check for contradictions.
+    
+    This function builds a prompt by embedding the evaluation decision details into the underwriter schema,
+    calls the GPT engine to generate the narrative, then uses a secondary prompt to verify the narrative against
+    the underlying business logic. If any contradictions are found, it will automatically attempt to regenerate
+    the narrative.
+    """
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            narrative = generate_underwriter_narrative(evaluation_decision)
+        except EvaluationError as e:
+            logger.error(f"Error during narrative generation on attempt {attempt+1}: {e}")
+            continue  # Retry the narrative generation
+        
+        try:
+            check_result = check_underwriter_narrative(narrative, evaluation_decision)
+        except EvaluationError as e:
+            logger.error(f"Error during narrative check on attempt {attempt+1}: {e}")
+            continue  # Retry the narrative generation
+        
+        if "No contradictions found" in check_result:
+            return narrative
+        else:
+            logger.info(f"Check attempt {attempt+1}: discrepancies found - {check_result}. Regenerating narrative...")
+    
+    logger.warning("Max retries reached. Returning last generated narrative despite discrepancies.")
     return narrative
