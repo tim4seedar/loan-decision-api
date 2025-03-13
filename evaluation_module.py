@@ -7,6 +7,7 @@ from typing import Dict, List
 from gpt_client import call_gpt
 
 # Use call_gpt(...) wherever you need GPT
+# test note for commit and push
 
 
 # --------------------------------------------------
@@ -96,6 +97,7 @@ UNDERWRITER_SCHEMA = {
     "risk_recommendations": "Recommendations for mitigating risks, including additional security measures or notes for manual review if the case is borderline.",
     "audit_information": "Metadata including the rule version, evaluation timestamp, and an audit trail of all decisions made.",
     "compliance_notes": "Notes confirming adherence to regulatory requirements and internal lending policies, along with any documented exceptions."
+	}
     },
    "data_sources": {
     "decisioning_gpt": "This process is self-referential; the same GPT that generates the decision is used to provide a detailed explanation of the applied business logic using the input scenario data.",
