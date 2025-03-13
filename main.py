@@ -18,6 +18,7 @@ from datetime import datetime
 import uvicorn
 import logging
 
+logger = logging.getLogger(__name__)
 # --------------------------------------------------
 # Environment Detection
 # --------------------------------------------------
