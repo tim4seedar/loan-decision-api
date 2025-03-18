@@ -13,6 +13,7 @@ from config import (
     determine_pg_percentage
 )
 from config import adjust_confidence
+from config import evaluate_borrower_type
 from config import SME_PROFILES  # for base confidence
 from config import EvaluationError
 import logging
