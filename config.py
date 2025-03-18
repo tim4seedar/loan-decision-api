@@ -249,10 +249,10 @@ INDUSTRY_RISK_SCORES = {
     "Financial and Insurance Activities": 1.0
 }      
 # Define weights for each risk factor (they should add up to 1.0 if you want a normalized score)
-WEIGHT_SME = 0.30
-WEIGHT_DSCR = 0.30
-WEIGHT_CREDIT = 0.30
-WEIGHT_INDUSTRY = 0.10
+WEIGHT_SME = 0.32
+WEIGHT_DSCR = 0.32
+WEIGHT_CREDIT = 0.32
+WEIGHT_INDUSTRY = 0.04
 
 def calculate_overall_risk(sme_profile: str, dscr_level: str, credit_profile: str, industry_sector: str) -> float:
     """
