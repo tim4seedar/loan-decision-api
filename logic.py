@@ -12,9 +12,9 @@ from config import (
     calculate_overall_risk,
     determine_pg_percentage
 )
-from new_config import adjust_confidence
-from new_config import SME_PROFILES  # for base confidence
-from new_config import EvaluationError
+from config import adjust_confidence
+from config import SME_PROFILES  # for base confidence
+from config import EvaluationError
 import logging
 
 logger = logging.getLogger(__name__)
